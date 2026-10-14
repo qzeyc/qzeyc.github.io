@@ -1,0 +1,4413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AEGIS PROTOCOL: OVERDRIVE — 3D Tactical Tower Defense</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Rajdhani:wght@600;700;800&display=swap" rel="stylesheet">
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+  :root {
+    --bg-glass: rgba(11, 16, 24, 0.84);
+    --bg-glass-heavy: rgba(8, 12, 19, 0.94);
+    --border-cyan: rgba(0, 242, 255, 0.35);
+    --border-subtle: rgba(148, 163, 184, 0.18);
+    --accent-cyan: #00f2ff;
+    --accent-emerald: #00ffaa;
+    --accent-amber: #ffaa00;
+    --accent-crimson: #ff1e42;
+    --accent-violet: #b54cff;
+  }
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #06090f;
+    color: #e2e8f0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .font-display {
+    font-family: 'Rajdhani', sans-serif;
+    letter-spacing: 0.05em;
+  }
+
+  .font-mono-tech {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .glass-panel {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-panel-cyan {
+    background: var(--bg-glass-heavy);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border-cyan);
+    box-shadow: 0 0 24px rgba(0, 242, 255, 0.14), inset 0 1px 0 0 rgba(0, 242, 255, 0.2);
+  }
+
+  .tactical-btn {
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tactical-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 14px rgba(0, 242, 255, 0.28);
+  }
+
+  .tactical-btn:active:not(:disabled) {
+    transform: translateY(0px) scale(0.98);
+  }
+
+  .tower-card {
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .tower-card:hover {
+    transform: translateY(-6px);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 8px 20px -4px rgba(0, 242, 255, 0.3);
+  }
+
+  .tower-card.selected {
+    transform: translateY(-8px);
+    border-color: var(--accent-emerald);
+    background: linear-gradient(180deg, rgba(0, 255, 170, 0.18) 0%, rgba(11, 18, 28, 0.95) 100%);
+    box-shadow: 0 0 22px rgba(0, 255, 170, 0.45);
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 12px rgba(0, 242, 255, 0.35); }
+    50% { box-shadow: 0 0 24px rgba(0, 242, 255, 0.75); }
+  }
+
+  .animate-pulse-glow {
+    animation: pulseGlow 2s infinite ease-in-out;
+  }
+
+  @keyframes bossSiren {
+    0%, 100% { background-color: rgba(255, 30, 66, 0.15); border-color: rgba(255, 30, 66, 0.5); }
+    50% { background-color: rgba(255, 30, 66, 0.38); border-color: rgba(255, 30, 66, 1.0); }
+  }
+
+  .boss-alert-banner {
+    animation: bossSiren 1s infinite ease-in-out;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(10, 15, 24, 0.6);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 242, 255, 0.35);
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body class="relative select-none overflow-hidden">
+
+<canvas id="webgl-canvas" class="block w-full h-full cursor-crosshair"></canvas>
+<canvas id="fct-canvas" class="pointer-events-none fixed inset-0 w-full h-full z-10"></canvas>
+
+<!-- Cursor Placement Validation Badge -->
+<div id="cursor-badge" class="pointer-events-none fixed z-30 hidden transform -translate-x-1/2 -translate-y-12 px-2.5 py-1 rounded text-xs font-mono-tech font-bold tracking-wider uppercase shadow-lg border"></div>
+
+<div id="hud-root" class="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-2.5 sm:p-3.5">
+
+  <!-- TOP BAR -->
+  <div class="flex flex-wrap items-start justify-between gap-2 w-full">
+
+    <!-- Left Cluster: Base Health, Credits, Tower Limit -->
+    <div class="pointer-events-auto glass-panel rounded-xl p-2.5 flex items-center gap-3.5 border-l-4 border-l-cyan-400">
+      <!-- Aegis Core Health -->
+      <div class="min-w-[145px]">
+        <div class="flex items-center justify-between text-[11px] font-display font-bold tracking-wider text-slate-300 mb-1">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>AEGIS CORE</span>
+          <span id="ui-hp-text" class="font-mono-tech text-cyan-300">150 / 150</span>
+        </div>
+        <div class="w-full h-2.5 bg-slate-900/90 rounded-full overflow-hidden border border-slate-700/70 p-0.5">
+          <div id="ui-hp-bar" class="h-full bg-gradient-to-r from-cyan-400 to-emerald-400 rounded-full transition-all duration-300" style="width: 100%"></div>
+        </div>
+      </div>
+
+      <div class="h-8 w-[1px] bg-slate-700/60"></div>
+
+      <!-- Credits -->
+      <div class="flex flex-col">
+        <span class="text-[10px] font-display uppercase tracking-widest text-slate-400">Tactical Credits</span>
+        <div id="ui-cash" class="text-lg sm:text-xl font-mono-tech font-bold text-emerald-400 transition-transform duration-150">$650</div>
+      </div>
+
+      <div class="h-8 w-[1px] bg-slate-700/60"></div>
+
+      <!-- Tower Cap -->
+      <div class="flex flex-col pr-1">
+        <span class="text-[10px] font-display uppercase tracking-widest text-slate-400">Deploy Cap</span>
+        <div id="ui-tower-count" class="text-sm sm:text-base font-mono-tech font-bold text-slate-200">0 / 35</div>
+      </div>
+    </div>
+
+    <div class="pointer-events-auto flex flex-col items-center gap-1.5 flex-1 max-w-md mx-auto">
+      <div class="glass-panel rounded-xl px-4 py-2 w-full flex items-center justify-between border-t-2 border-t-cyan-400/60">
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="ui-wave-number" class="font-display font-extrabold text-lg sm:text-xl text-white tracking-wider">WAVE 0 / 30</span>
+            <span id="ui-difficulty-badge" class="text-[10px] font-mono-tech uppercase px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">TACTICAL</span>
+          </div>
+          <div id="ui-wave-title" class="text-xs font-mono-tech text-cyan-400 tracking-wide">AWAITING DEPLOYMENT</div>
+        </div>
+        <div class="text-right">
+          <div class="text-[10px] font-display uppercase text-slate-400">Next Threat / Timer</div>
+          <div id="ui-wave-timer" class="font-mono-tech font-bold text-sm sm:text-base text-amber-300">READY</div>
+        </div>
+      </div>
+
+      <!-- Skip / Start Wave Callout Button -->
+      <button id="btn-skip-wave" class="tactical-btn glass-panel-cyan px-4 py-1.5 rounded-lg text-xs font-mono-tech font-bold text-emerald-300 flex items-center gap-2 animate-pulse-glow">
+        <span class="px-1.5 py-0.5 bg-emerald-500/20 border border-emerald-400/40 rounded text-[10px]">G</span>
+        <span id="btn-skip-wave-label">LAUNCH WAVE 1</span>
+      </button>
+
+      <!-- Boss Health Bar (Hidden unless Boss active) -->
+      <div id="ui-boss-container" class="hidden w-full glass-panel rounded-xl p-2.5 border border-rose-500/60 boss-alert-banner">
+        <div class="flex items-center justify-between text-xs font-display font-bold tracking-wider mb-1">
+          <span id="ui-boss-name" class="text-rose-400 uppercase flex items-center gap-1.5">⚠ GRAVEDIGGER TITAN</span>
+          <span id="ui-boss-hp-text" class="font-mono-tech text-white">4,500 / 4,500</span>
+        </div>
+        <!-- Boss Shield Bar -->
+        <div id="ui-boss-shield-wrap" class="hidden w-full h-1.5 bg-slate-950 rounded-full overflow-hidden mb-1">
+          <div id="ui-boss-shield-bar" class="h-full bg-cyan-400 transition-all duration-150" style="width: 100%"></div>
+        </div>
+        <!-- Boss HP Bar -->
+        <div class="relative w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-rose-500/40">
+          <div id="ui-boss-hp-bar" class="h-full bg-gradient-to-r from-rose-600 via-red-500 to-amber-500 transition-all duration-150" style="width: 100%"></div>
+          <!-- Phase Notches -->
+          <div class="absolute top-0 bottom-0 left-1/3 w-[1px] bg-white/40"></div>
+          <div class="absolute top-0 bottom-0 left-1/2 w-[1px] bg-white/60"></div>
+          <div class="absolute top-0 bottom-0 left-2/3 w-[1px] bg-white/40"></div>
+        </div>
+        <div id="ui-boss-skill-text" class="text-[10px] font-mono-tech text-amber-300 mt-1 text-center uppercase tracking-widest">STATUS: ADVANCING</div>
+      </div>
+    </div>
+
+    <div class="pointer-events-auto flex flex-col items-end gap-1.5">
+      <div class="glass-panel rounded-xl p-1.5 flex items-center gap-1">
+        <button data-speed="0" class="speed-btn tactical-btn px-2 py-1 rounded text-xs font-mono-tech font-bold bg-slate-800/80 text-slate-300 border border-slate-700" title="Pause">||</button>
+        <button data-speed="0.5" class="speed-btn tactical-btn px-2 py-1 rounded text-xs font-mono-tech font-bold bg-slate-800/80 text-slate-300 border border-slate-700" title="0.5x Tactical Slow-Mo">0.5x</button>
+        <button data-speed="1" class="speed-btn tactical-btn px-2.5 py-1 rounded text-xs font-mono-tech font-bold bg-cyan-500/30 text-cyan-300 border border-cyan-400" title="1x Standard Speed">1x</button>
+        <button data-speed="2" class="speed-btn tactical-btn px-2.5 py-1 rounded text-xs font-mono-tech font-bold bg-slate-800/80 text-slate-300 border border-slate-700" title="2x Fast Forward">2x</button>
+        <button data-speed="3" class="speed-btn tactical-btn px-2.5 py-1 rounded text-xs font-mono-tech font-bold bg-slate-800/80 text-slate-300 border border-slate-700" title="3x Overdrive">3x</button>
+      </div>
+
+      <div class="glass-panel rounded-xl p-1.5 flex flex-wrap items-center gap-1">
+        <button id="btn-cam-mode" class="tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-400/60" title="Переключить режим Roblox-аватара и свободной камеры">[V] ROBLOX 3D: ВКЛ</button>
+        <button id="btn-cam-pov" class="tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech bg-cyan-500/20 text-cyan-300 border border-cyan-400/40" title="Переключить дистанцию камеры (3-е лицо / 1-е лицо / Обзор)">[C] ВИД: 3-Е ЛИЦО</button>
+        <button id="btn-autoskip" class="tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech bg-slate-800/80 text-slate-300 border border-slate-700">AUTO-SKIP: OFF</button>
+        <button id="btn-call-arms-global" class="hidden tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech font-bold bg-amber-500/20 text-amber-300 border border-amber-400/60">[F] CALL TO ARMS</button>
+        <button id="btn-sandbox" class="tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech bg-violet-500/20 text-violet-300 border border-violet-400/40">SANDBOX</button>
+        <button id="btn-codex" class="tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">CODEX</button>
+        <button id="btn-bloom" class="tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">BLOOM: ON</button>
+        <button id="btn-audio" class="tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">🔊 SFX+BGM</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="relative flex-1 flex items-center justify-between my-2 pointer-events-none overflow-hidden">
+
+    <!-- Left Comms Toast Stack -->
+    <div id="ui-toast-stack" class="flex flex-col gap-2 max-w-xs sm:max-w-sm pointer-events-none z-20"></div>
+
+    <!-- Right-Side Selected Tower Inspector Panel -->
+    <div id="ui-inspector" class="pointer-events-auto hidden glass-panel-cyan rounded-2xl w-80 sm:w-96 p-4 ml-auto flex flex-col gap-2.5 max-h-full overflow-y-auto transition-all duration-200">
+      <div class="flex items-start justify-between border-b border-slate-700/70 pb-2">
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="insp-name" class="font-display font-extrabold text-xl text-white uppercase tracking-wide">SCOUT</span>
+            <span id="insp-stars" class="text-amber-400 text-sm tracking-tighter">★☆☆☆</span>
+          </div>
+          <div id="insp-tier-title" class="text-xs font-mono-tech text-cyan-300">Tier 1: Laser Sight</div>
+        </div>
+        <button id="btn-insp-close" class="tactical-btn px-2 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-white text-xs font-mono-tech border border-slate-700">ESC</button>
+      </div>
+
+      <!-- Active Buff Pills -->
+      <div id="insp-buffs" class="flex flex-wrap gap-1"></div>
+
+      <!-- Live Telemetry -->
+      <div class="grid grid-cols-2 gap-2 bg-slate-900/75 p-2 rounded-lg border border-slate-800">
+        <div>
+          <div id="insp-telemetry-label" class="text-[10px] font-display uppercase text-slate-400">Total Damage</div>
+          <div id="insp-total-dmg" class="font-mono-tech font-bold text-sm text-white">0</div>
+        </div>
+        <div>
+          <div class="text-[10px] font-display uppercase text-slate-400">Effective DPS</div>
+          <div id="insp-dps" class="font-mono-tech font-bold text-sm text-emerald-400">0.0 /s</div>
+        </div>
+      </div>
+
+      <!-- Current Stats Grid -->
+      <div id="insp-stats-grid" class="grid grid-cols-3 gap-1.5 text-center"></div>
+
+      <!-- Detection & Trait Badges -->
+      <div id="insp-traits" class="flex flex-wrap gap-1.5"></div>
+
+      <!-- Targeting Priority Selector -->
+      <div id="insp-target-wrap" class="flex flex-col gap-1">
+        <div class="flex items-center justify-between text-[10px] font-display uppercase text-slate-400">
+          <span>Targeting Priority</span>
+          <span class="font-mono-tech text-cyan-400">[T] Cycle</span>
+        </div>
+        <div id="insp-target-buttons" class="grid grid-cols-6 gap-1"></div>
+      </div>
+
+      <!-- Special Tower Controls (Commander Call to Arms / DJ Track Switcher) -->
+      <div id="insp-special-wrap" class="hidden flex-col gap-1.5 pt-1 border-t border-slate-800"></div>
+
+      <!-- Next Tier Upgrade Preview Card -->
+      <div id="insp-upgrade-card" class="bg-slate-900/90 rounded-xl p-3 border border-cyan-500/30 flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span id="insp-next-title" class="text-xs font-display font-bold text-amber-300 uppercase">NEXT: TIER 2</span>
+          <span id="insp-next-cost" class="text-sm font-mono-tech font-bold text-emerald-400">$400</span>
+        </div>
+        <div id="insp-next-deltas" class="text-[11px] font-mono-tech text-slate-300 space-y-0.5"></div>
+        <button id="btn-upgrade-tower" class="tactical-btn w-full py-2 rounded-lg font-display font-bold text-sm tracking-wider uppercase bg-gradient-to-r from-cyan-500/30 to-emerald-500/30 text-emerald-300 border border-emerald-400/60">
+          [U] UPGRADE TOWER
+        </button>
+      </div>
+
+      <!-- Sell Button -->
+      <button id="btn-sell-tower" class="tactical-btn w-full py-1.5 rounded-lg font-mono-tech text-xs font-bold bg-rose-500/15 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30">
+        [X] SELL TOWER (+$140)
+      </button>
+    </div>
+  </div>
+
+  <div class="pointer-events-auto flex flex-col items-center w-full relative">
+
+    <!-- Hover Tooltip above dock -->
+    <div id="ui-dock-tooltip" class="hidden mb-2 glass-panel-cyan rounded-xl p-3 max-w-md w-full text-xs pointer-events-none transition-opacity">
+      <div class="flex items-center justify-between mb-1">
+        <span id="tt-name" class="font-display font-bold text-base text-white uppercase">TOWER</span>
+        <span id="tt-type" class="font-mono-tech text-[10px] px-1.5 py-0.5 rounded">GROUND</span>
+      </div>
+      <p id="tt-desc" class="text-slate-300 text-[11px] leading-relaxed mb-1.5"></p>
+      <div id="tt-stats" class="flex items-center gap-3 font-mono-tech text-[11px] text-cyan-300"></div>
+    </div>
+
+    <!-- 10-Tower Cards Row -->
+    <div id="ui-tower-dock" class="glass-panel rounded-2xl p-2 flex items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full"></div>
+  </div>
+
+</div>
+
+<!-- Sandbox Modal -->
+<div id="modal-sandbox" class="hidden fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="glass-panel-cyan rounded-2xl max-w-lg w-full p-5 flex flex-col gap-4">
+    <div class="flex items-center justify-between border-b border-slate-700 pb-2.5">
+      <h2 class="font-display font-extrabold text-xl text-violet-300 uppercase tracking-wider">⚡ SANDBOX & TACTICAL OVERRIDE</h2>
+      <button id="btn-close-sandbox" class="tactical-btn px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs font-mono-tech">CLOSE</button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2.5">
+      <button id="sb-add-cash" class="tactical-btn p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-mono-tech text-xs font-bold">+$999,999 CREDITS</button>
+      <button id="sb-heal-base" class="tactical-btn p-2.5 rounded-xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-mono-tech text-xs font-bold">RESTORE BASE HP (MAX)</button>
+      <button id="sb-clear-enemies" class="tactical-btn p-2.5 rounded-xl bg-rose-500/20 border border-rose-400/50 text-rose-300 font-mono-tech text-xs font-bold">OBLITERATE ALL ENEMIES</button>
+      <button id="sb-max-all-towers" class="tactical-btn p-2.5 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 font-mono-tech text-xs font-bold">UPGRADE ALL TOWERS TO T4</button>
+    </div>
+
+    <div>
+      <label class="block text-xs font-display uppercase text-slate-400 mb-1">Difficulty Preset</label>
+      <div class="grid grid-cols-3 gap-2">
+        <button data-diff="casual" class="diff-btn tactical-btn py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono-tech text-emerald-300">CASUAL (0.75x HP)</button>
+        <button data-diff="tactical" class="diff-btn tactical-btn py-1.5 rounded-lg bg-cyan-500/20 border border-cyan-400 text-xs font-mono-tech text-cyan-300">TACTICAL (1.0x)</button>
+        <button data-diff="fallen" class="diff-btn tactical-btn py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono-tech text-rose-400">FALLEN (1.45x HP)</button>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-xs font-display uppercase text-slate-400 mb-1">Jump To Campaign Wave (1 - 30)</label>
+      <div class="flex gap-2">
+        <input id="sb-wave-input" type="number" min="1" max="30" value="10" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono-tech text-white w-24">
+        <button id="sb-jump-wave" class="tactical-btn flex-1 py-1.5 rounded-lg bg-cyan-500/25 border border-cyan-400/50 text-cyan-300 font-mono-tech text-xs font-bold">WARP TO WAVE</button>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-xs font-display uppercase text-slate-400 mb-1">Instant Threat Spawner (Test Ground)</label>
+      <div class="grid grid-cols-3 gap-1.5 text-[11px] font-mono-tech">
+        <button data-spawn="phantom" class="sb-spawn-btn tactical-btn py-1.5 px-2 rounded bg-slate-800 border border-slate-700 text-violet-300">Spawn Hidden</button>
+        <button data-spawn="lead" class="sb-spawn-btn tactical-btn py-1.5 px-2 rounded bg-slate-800 border border-slate-700 text-slate-300">Spawn Lead</button>
+        <button data-spawn="valkyrie" class="sb-spawn-btn tactical-btn py-1.5 px-2 rounded bg-slate-800 border border-slate-700 text-sky-300">Spawn Flying</button>
+        <button data-spawn="boss1" class="sb-spawn-btn tactical-btn py-1.5 px-2 rounded bg-rose-950/60 border border-rose-500/40 text-amber-300">Boss 1: Titan</button>
+        <button data-spawn="boss2" class="sb-spawn-btn tactical-btn py-1.5 px-2 rounded bg-rose-950/60 border border-rose-500/40 text-orange-400">Boss 2: Warlord</button>
+        <button data-spawn="boss3" class="sb-spawn-btn tactical-btn py-1.5 px-2 rounded bg-rose-950/60 border border-rose-500/40 text-rose-400">Boss 3: Overlord</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tactical Codex Modal -->
+<div id="modal-codex" class="hidden fixed inset-0 z-40 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="glass-panel-cyan rounded-2xl max-w-4xl w-full max-h-[85vh] p-5 flex flex-col gap-3">
+    <div class="flex items-center justify-between border-b border-slate-700 pb-2.5">
+      <div class="flex items-center gap-3">
+        <h2 class="font-display font-extrabold text-xl text-cyan-300 uppercase tracking-wider">📖 AEGIS TACTICAL CODEX & DATABASE</h2>
+        <div class="flex gap-1">
+          <button id="tab-codex-towers" class="tactical-btn px-3 py-1 rounded text-xs font-mono-tech font-bold bg-cyan-500/30 text-cyan-300 border border-cyan-400">10 TOWERS</button>
+          <button id="tab-codex-enemies" class="tactical-btn px-3 py-1 rounded text-xs font-mono-tech font-bold bg-slate-800 text-slate-400 border border-slate-700">14 ENEMIES & 3 BOSSES</button>
+        </div>
+      </div>
+      <button id="btn-close-codex" class="tactical-btn px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs font-mono-tech">CLOSE</button>
+    </div>
+    <div id="codex-content" class="overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-3 pr-1"></div>
+  </div>
+</div>
+
+<!-- Victory / Defeat Summary Modal -->
+<div id="modal-endgame" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+  <div class="glass-panel-cyan rounded-2xl max-w-md w-full p-6 flex flex-col items-center text-center gap-4">
+    <div id="endgame-badge" class="px-3 py-1 rounded-full text-xs font-mono-tech font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">MISSION COMPLETE</div>
+    <h1 id="endgame-title" class="font-display font-extrabold text-3xl sm:text-4xl text-white tracking-wider uppercase">VICTORY ACHIEVED</h1>
+    <p id="endgame-subtitle" class="text-xs text-slate-300">The Void Overlord has been vanquished and the Aegis Core stands unbroken.</p>
+
+    <div class="w-full grid grid-cols-2 gap-2.5 bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 text-left font-mono-tech">
+      <div>
+        <div class="text-[10px] text-slate-400 uppercase">Total Damage Dealt</div>
+        <div id="end-stat-dmg" class="text-sm font-bold text-cyan-300">0</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400 uppercase">Hostiles Eliminated</div>
+        <div id="end-stat-kills" class="text-sm font-bold text-emerald-300">0</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400 uppercase">Total Credits Earned</div>
+        <div id="end-stat-cash" class="text-sm font-bold text-amber-300">$0</div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400 uppercase">MVP Tactical Unit</div>
+        <div id="end-stat-mvp" class="text-sm font-bold text-violet-300">N/A</div>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2 w-full">
+      <button id="btn-endless-continue" class="tactical-btn flex-1 py-2.5 rounded-xl font-display font-bold text-sm uppercase bg-violet-500/30 text-violet-200 border border-violet-400">ENDLESS OVERTIME (W31+)</button>
+      <button id="btn-restart-game" class="tactical-btn flex-1 py-2.5 rounded-xl font-display font-bold text-sm uppercase bg-cyan-500/30 text-cyan-200 border border-cyan-400">NEW CAMPAIGN</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+/* ============================================================================
+   1. CONFIG & BALANCE TABLES (TOWERS, UPGRADES, ENEMIES, BOSSES, 30 WAVES)
+   ============================================================================ */
+const DIFFICULTY_PRESETS = {
+  casual:   { name: 'CASUAL',   startCash: 800, startHp: 200, hpMult: 0.75, rewardMult: 1.15 },
+  tactical: { name: 'TACTICAL', startCash: 650, startHp: 150, hpMult: 1.00, rewardMult: 1.00 },
+  fallen:   { name: 'FALLEN',   startCash: 550, startHp: 100, hpMult: 1.45, rewardMult: 0.90 }
+};
+
+const TARGET_MODES = ['First', 'Last', 'Strongest', 'Weakest', 'Closest', 'Cluster'];
+
+const TOWER_SPECS = [
+  {
+    id: 'scout', key: '1', name: 'Scout', placement: 'GROUND', radius: 1.1, limit: 12,
+    role: 'Cost-efficient early defender. Unlocks UV Hidden Detection at T2 and dual-wielding pulse magnums at T3–T4.',
+    iconSvg: '<path d="M4 14h10l3-4H7l-3 4zm2 0l-2 6h3l2-6" stroke="#00f2ff" stroke-width="2" fill="none"/>',
+    tiers: [
+      { title: 'Rookie Operative', cost: 200, dmg: 4, cd: 1.10, range: 12.0, hidden: false, lead: false, splash: 0, crit: 0 },
+      { title: 'Laser Sight', cost: 150, dmg: 6, cd: 0.90, range: 14.0, hidden: false, lead: false, splash: 0, crit: 0 },
+      { title: 'UV Optics & AP Rounds', cost: 400, dmg: 11, cd: 0.75, range: 15.5, hidden: true, lead: false, splash: 0, crit: 0 },
+      { title: 'Akimbo Specialist', cost: 950, dmg: 18, cd: 0.45, range: 17.0, hidden: true, lead: false, splash: 0, crit: 0, dual: true },
+      { title: 'Golden Vanguard', cost: 2400, dmg: 38, cd: 0.28, range: 19.0, hidden: true, lead: true, splash: 0, crit: 0.20, dual: true }
+    ]
+  },
+  {
+    id: 'sniper', key: '2', name: 'Sniper', placement: 'CLIFF', radius: 1.3, limit: 8,
+    role: 'High-ground anti-materiel marksman. Extreme range and full Lead Armor penetration across all tiers.',
+    iconSvg: '<circle cx="12" cy="12" r="7" stroke="#ffaa00" stroke-width="2" fill="none"/><path d="M12 2v20M2 12h20" stroke="#ffaa00" stroke-width="1.8"/>',
+    tiers: [
+      { title: 'Spotter Marksman', cost: 350, dmg: 18, cd: 3.20, range: 28.0, hidden: false, lead: true, splash: 0 },
+      { title: 'High-Caliber Receiver', cost: 300, dmg: 32, cd: 2.80, range: 33.0, hidden: false, lead: true, splash: 0 },
+      { title: 'Thermal Imaging', cost: 750, dmg: 65, cd: 2.40, range: 38.0, hidden: true, lead: true, splash: 0 },
+      { title: '.50 Cal Anti-Materiel', cost: 1850, dmg: 150, cd: 2.10, range: 45.0, hidden: true, lead: true, splash: 0, shred: 0.15 },
+      { title: 'Orbital Rail-Sniper', cost: 4800, dmg: 420, cd: 1.80, range: 55.0, hidden: true, lead: true, splash: 2.5, splashDmg: 100, shred: 0.20 }
+    ]
+  },
+  {
+    id: 'minigunner', key: '3', name: 'Minigunner', placement: 'GROUND', radius: 1.4, limit: 10,
+    role: 'Sustained rotary suppression. Requires brief barrel spin-up before unleashing torrential fire.',
+    iconSvg: '<path d="M3 9h18M3 12h18M3 15h18M7 6v12M17 6v12" stroke="#00f2ff" stroke-width="2"/>',
+    tiers: [
+      { title: 'Heavy Gunner', cost: 1750, dmg: 5, cd: 0.14, range: 16.0, hidden: false, lead: false, spinUp: 0.80 },
+      { title: 'Motorized Feed', cost: 800, dmg: 7, cd: 0.11, range: 17.5, hidden: false, lead: false, spinUp: 0.55 },
+      { title: 'Tactical HUD & Titanium', cost: 1900, dmg: 12, cd: 0.09, range: 19.0, hidden: true, lead: false, spinUp: 0.45 },
+      { title: 'Dual-Rotor Vulcan', cost: 4200, dmg: 22, cd: 0.07, range: 21.0, hidden: true, lead: true, spinUp: 0.35, dual: true },
+      { title: 'Apex Plasma Gatling', cost: 9500, dmg: 46, cd: 0.055, range: 23.0, hidden: true, lead: true, spinUp: 0.25, dual: true, plasma: true }
+    ]
+  },
+  {
+    id: 'mortar', key: '4', name: 'Mortar', placement: 'CLIFF', radius: 1.5, limit: 6,
+    role: 'Cliff-mounted parabolic artillery. Launches high-arcing explosive ordnance that obliterates clustered swarms and Lead.',
+    iconSvg: '<path d="M5 19l9-13 4 3-9 13H5zM4 20h16" stroke="#ffaa00" stroke-width="2" fill="none"/>',
+    tiers: [
+      { title: 'Field Mortar', cost: 900, dmg: 25, cd: 4.00, range: 32.0, hidden: false, lead: true, splash: 4.0 },
+      { title: 'High-Explosive Shells', cost: 650, dmg: 45, cd: 3.60, range: 35.0, hidden: false, lead: true, splash: 5.0 },
+      { title: 'Incendiary Napalm', cost: 1600, dmg: 85, cd: 3.30, range: 38.0, hidden: false, lead: true, splash: 6.0, burnDps: 15, burnDur: 4.0 },
+      { title: 'Cluster Munitions', cost: 3800, dmg: 180, cd: 3.00, range: 42.0, hidden: true, lead: true, splash: 7.0, burnDps: 25, burnDur: 4.0, cluster: 4 },
+      { title: 'Antimatter Howitzer', cost: 8500, dmg: 550, cd: 2.80, range: 48.0, hidden: true, lead: true, splash: 9.5, burnDps: 50, burnDur: 5.0, cluster: 6, stun: 1.0 }
+    ]
+  },
+  {
+    id: 'cryo', key: '5', name: 'Cryo-Blaster', placement: 'GROUND', radius: 1.2, limit: 6,
+    role: 'Sub-zero crowd control. Chills swarms, freezes non-bosses into solid 3D ice blocks, and applies Brittle (+25% DMG taken).',
+    iconSvg: '<path d="M12 2v20M4.9 4.9l14.2 14.2M19.1 4.9L4.9 19.1" stroke="#38bdf8" stroke-width="2"/>',
+    tiers: [
+      { title: 'Cryo Operative', cost: 550, dmg: 3, cd: 0.80, range: 12.0, hidden: false, lead: false, splash: 1.8, slow: 0.25, slowDur: 2.5 },
+      { title: 'Pressurized Nozzle', cost: 450, dmg: 6, cd: 0.65, range: 14.0, hidden: false, lead: false, splash: 2.5, slow: 0.35, slowDur: 3.0 },
+      { title: 'Deep Freeze', cost: 1200, dmg: 14, cd: 0.55, range: 15.5, hidden: true, lead: true, splash: 3.0, slow: 0.45, slowDur: 3.5, freezeEvery: 4 },
+      { title: 'Sub-Zero Shatter', cost: 2700, dmg: 28, cd: 0.45, range: 17.0, hidden: true, lead: true, splash: 3.5, slow: 0.55, slowDur: 4.0, freezeEvery: 3, brittle: 0.25 },
+      { title: 'Absolute Zero Core', cost: 6200, dmg: 65, cd: 0.38, range: 19.5, hidden: true, lead: true, splash: 4.2, slow: 0.65, slowDur: 4.5, freezeEvery: 2, brittle: 0.30, blizzardAura: true }
+    ]
+  },
+  {
+    id: 'accelerator', key: '6', name: 'Accelerator', placement: 'GROUND', radius: 1.5, limit: 8,
+    role: 'Endgame continuous plasma beam titan. Charges capacitor then locks a sweeping disintegration beam onto targets.',
+    iconSvg: '<circle cx="12" cy="12" r="4" stroke="#d946ef" stroke-width="2" fill="none"/><path d="M2 12h6M16 12h6M12 2v6M12 16v6" stroke="#d946ef" stroke-width="2"/>',
+    tiers: [
+      { title: 'Proto-Accelerator', cost: 3800, dmg: 18, cd: 0.10, range: 17.0, hidden: true, lead: true, chargeTime: 1.4, beamDur: 3.0, rechargeTime: 2.2, beamColor: 0x00d2ff },
+      { title: 'Stabilized Coils', cost: 1600, dmg: 26, cd: 0.10, range: 18.5, hidden: true, lead: true, chargeTime: 1.25, beamDur: 3.5, rechargeTime: 2.0, beamColor: 0x3b82f6 },
+      { title: 'Overclocked Capacitor', cost: 3600, dmg: 45, cd: 0.10, range: 20.0, hidden: true, lead: true, chargeTime: 1.1, beamDur: 4.0, rechargeTime: 1.8, beamColor: 0x8b5cf6 },
+      { title: 'Singularity Projector', cost: 7800, dmg: 85, cd: 0.10, range: 22.0, hidden: true, lead: true, chargeTime: 0.95, beamDur: 4.5, rechargeTime: 1.5, beamColor: 0xec4899 },
+      { title: 'Omega Void Disintegrator', cost: 16500, dmg: 175, cd: 0.10, range: 24.5, hidden: true, lead: true, chargeTime: 0.75, beamDur: 5.5, rechargeTime: 1.3, beamColor: 0xff1e56, ramp: 0.30 }
+    ]
+  },
+  {
+    id: 'commander', key: '7', name: 'Commander', placement: 'GROUND', radius: 1.3, limit: 3,
+    role: 'Tactical support officer. Passively boosts fire rate of nearby towers and unlocks "Call to Arms" active overdrive at T2+.',
+    iconSvg: '<polygon points="12,2 15,9 22,9 16,14 18,21 12,17 6,21 8,14 2,9 9,9" stroke="#facc15" stroke-width="1.8" fill="none"/>',
+    tiers: [
+      { title: 'Field Officer', cost: 650, dmg: 0, cd: 1.0, range: 14.0, hidden: false, lead: false, rateBuff: 0.12 },
+      { title: 'Tactical Uplink', cost: 500, dmg: 12, cd: 1.0, range: 16.0, hidden: true, lead: false, rateBuff: 0.18 },
+      { title: 'Call to Arms Protocol', cost: 1500, dmg: 20, cd: 0.85, range: 17.5, hidden: true, lead: true, rateBuff: 0.25, activeRate: 0.45 },
+      { title: 'Artillery Command', cost: 3400, dmg: 35, cd: 0.75, range: 19.5, hidden: true, lead: true, rateBuff: 0.32, rangeBuff: 0.10, activeRate: 0.55 },
+      { title: 'Supreme Fleet Marshal', cost: 7500, dmg: 65, cd: 0.60, range: 22.0, hidden: true, lead: true, rateBuff: 0.40, rangeBuff: 0.12, dmgBuff: 0.15, activeRate: 0.65, orbitalStrike: true }
+    ]
+  },
+  {
+    id: 'dj', key: '8', name: 'DJ Booth', placement: 'GROUND', radius: 1.8, limit: 1,
+    role: 'Harmonic equalizer stage. Boosts tower range, slashes upgrade costs, and switches between Range, Discount, and Damage tracks.',
+    iconSvg: '<circle cx="12" cy="12" r="8" stroke="#c084fc" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="2.5" fill="#c084fc"/>',
+    tiers: [
+      { title: 'Street Deck', cost: 800, dmg: 0, cd: 0, range: 15.0, rangeBuff: 0.10, discount: 0.05 },
+      { title: 'Subwoofer Array', cost: 600, dmg: 0, cd: 0, range: 17.0, rangeBuff: 0.15, discount: 0.10 },
+      { title: 'Laser Light Show', cost: 1700, dmg: 0, cd: 0, range: 19.0, rangeBuff: 0.20, discount: 0.15, tracks: true },
+      { title: 'Festival Mainstage', cost: 3900, dmg: 50, cd: 8.0, range: 21.0, rangeBuff: 0.28, discount: 0.20, tracks: true, bassWave: true },
+      { title: 'Neon Cyber-Symphony', cost: 8200, dmg: 110, cd: 7.0, range: 24.0, rangeBuff: 0.35, discount: 0.25, dmgBuff: 0.20, tracks: true, bassWave: true }
+    ]
+  },
+  {
+    id: 'farm', key: '9', name: 'Quantum Farm', placement: 'GROUND', radius: 1.6, limit: 8,
+    role: 'Economic synthesizer. Generates high credit dividends at the end of every wave plus active mid-wave payouts at T4.',
+    iconSvg: '<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="#10b981" stroke-width="2" fill="none"/>',
+    tiers: [
+      { title: 'Bio-Plot', cost: 250, dmg: 0, cd: 0, range: 6.0, payout: 100 },
+      { title: 'Automated Harvester', cost: 250, dmg: 0, cd: 0, range: 6.0, payout: 200 },
+      { title: 'Solar-Crypto Array', cost: 600, dmg: 0, cd: 0, range: 6.0, payout: 400 },
+      { title: 'Antimatter Refinery', cost: 1400, dmg: 0, cd: 0, range: 6.0, payout: 850 },
+      { title: 'Dyson Micro-Reactor', cost: 3500, dmg: 0, cd: 10.0, range: 6.0, payout: 1800, midWaveCash: 50 }
+    ]
+  },
+  {
+    id: 'mech', key: '0', name: 'Mech Factory', placement: 'GROUND', radius: 2.0, limit: 5,
+    role: 'Spawns armored allied vehicles at the Aegis Core that patrol backward down the road, ramming and shooting hostiles.',
+    iconSvg: '<rect x="3" y="8" width="18" height="9" rx="2" stroke="#38bdf8" stroke-width="2" fill="none"/><circle cx="7" cy="18" r="2" fill="#38bdf8"/><circle cx="17" cy="18" r="2" fill="#38bdf8"/>',
+    tiers: [
+      { title: 'Humvee Outpost', cost: 450, dmg: 0, cd: 22.0, range: 8.0, unitName: 'Tactical Humvee', unitHp: 80, unitSpeed: 6.5, unitDmg: 0, unitCd: 0 },
+      { title: 'Up-Armored Convoy', cost: 400, dmg: 0, cd: 18.0, range: 8.0, unitName: 'Armored Humvee', unitHp: 160, unitSpeed: 6.5, unitDmg: 8, unitCd: 0.40 },
+      { title: 'Light Tank Hangar', cost: 1350, dmg: 0, cd: 18.0, range: 8.0, unitName: 'Battle Tank', unitHp: 450, unitSpeed: 5.2, unitDmg: 45, unitCd: 2.0, unitSplash: 3.5 },
+      { title: 'Railgun Tank Foundry', cost: 3600, dmg: 0, cd: 16.0, range: 8.0, unitName: 'Railgun Tank', unitHp: 1100, unitSpeed: 5.0, unitDmg: 160, unitCd: 1.8, unitSplash: 4.0 },
+      { title: 'Titan Walker Facility', cost: 8800, dmg: 0, cd: 15.0, range: 8.0, unitName: 'Apex Siege Titan', unitHp: 2800, unitSpeed: 4.5, unitDmg: 95, unitCd: 0.35, unitSplash: 5.0, deathExplosion: 500 }
+    ]
+  }
+];
+
+const ENEMY_SPECS = {
+  grunt:       { id: 'grunt',       name: 'Vanguard Grunt',   hp: 18,    speed: 3.8, reward: 12,   color: 0x64748b, accent: 0xff1e42, scale: 0.85, desc: 'Standard infantry droid.' },
+  sprinter:    { id: 'sprinter',    name: 'Volt Sprinter',    hp: 12,    speed: 7.2, reward: 15,   color: 0xfacc15, accent: 0x00f2ff, scale: 0.78, desc: 'High-velocity cyber-runner.' },
+  brute:       { id: 'brute',       name: 'Iron Brute',       hp: 85,    speed: 2.1, reward: 35,   color: 0x334155, accent: 0xff6b00, scale: 1.25, slowResist: 0.5, desc: 'Heavy armor plating with 50% slow resistance.' },
+  phantom:     { id: 'phantom',     name: 'Phantom Stalker',  hp: 45,    speed: 4.5, reward: 40,   color: 0x4c1d95, accent: 0xc084fc, scale: 0.90, hidden: true, desc: 'Cloaked stealth unit. Requires Hidden Detection.' },
+  lead:        { id: 'lead',        name: 'Lead Juggernaut',  hp: 140,   speed: 2.4, reward: 60,   color: 0x475569, accent: 0x94a3b8, scale: 1.20, lead: true, desc: 'Immune to standard kinetic rounds. Needs Sniper/Mortar/Plasma.' },
+  breacher:    { id: 'breacher',    name: 'Aegis Breacher',   hp: 120,   shield: 180, speed: 3.2, reward: 75, color: 0x0f172a, accent: 0x00f2ff, scale: 1.05, desc: 'Protected by a regenerating 180 HP energy shield.' },
+  medic:       { id: 'medic',       name: 'Nano-Medic Drone', hp: 160,   speed: 3.5, reward: 80,   color: 0xf8fafc, accent: 0x10b981, scale: 0.95, healer: true, desc: 'Pulses an emerald restoration wave every 3s.' },
+  valkyrie:    { id: 'valkyrie',    name: 'Wraith Valkyrie',  hp: 240,   speed: 4.2, reward: 95,   color: 0x1e293b, accent: 0x38bdf8, scale: 1.00, flying: true, desc: 'Airborne jetpack unit hovering above ground hazards.' },
+  cryomutant:  { id: 'cryomutant',  name: 'Cryo-Mutant',      hp: 420,   speed: 5.2, reward: 120,  color: 0x0284c7, accent: 0x7dd3fc, scale: 1.30, freezeImmune: true, desc: 'Crystalline behemoth immune to Cryo freeze.' },
+  necromancer: { id: 'necromancer', name: 'Void Necromancer', hp: 950,   speed: 2.0, reward: 250,  color: 0x2e1065, accent: 0xd946ef, scale: 1.35, summoner: true, desc: 'Raises 4 Shadow Thralls every 7 seconds.' },
+  thrall:      { id: 'thrall',      name: 'Shadow Thrall',    hp: 120,   speed: 4.6, reward: 15,   color: 0x1e1b4b, accent: 0xa855f7, scale: 0.80, desc: 'Summoned void construct.' },
+  knight:      { id: 'knight',      name: 'Fallen Knight',    hp: 2200,  speed: 2.6, reward: 380,  color: 0x090d16, accent: 0x6366f1, scale: 1.45, armor: 0.30, stunImmune: true, desc: '30% Damage Reduction and Stun Immunity.' },
+  berserker:   { id: 'berserker',   name: 'Tesla Berserker',  hp: 3500,  speed: 4.8, reward: 450,  color: 0x1e293b, accent: 0xfacc15, scale: 1.40, rage: true, desc: 'Gains +40% movement speed when below 50% HP.' },
+  guardian:    { id: 'guardian',    name: 'Fallen Guardian',  hp: 9500,  speed: 1.9, reward: 1200, color: 0x450a0a, accent: 0xfbbf24, scale: 1.75, armor: 0.25, miniBoss: true, desc: 'Royal Sentinel. Spear stomp stuns 2 closest towers.' },
+  reaver:      { id: 'reaver',      name: 'Void Reaver',      hp: 5500,  shield: 2500, speed: 6.0, reward: 800, color: 0x09090b, accent: 0xf43f5e, scale: 1.25, hidden: true, desc: 'Late-game stealth assassin with 2,500 Void Shield.' },
+  boss1: {
+    id: 'boss1', name: 'GRAVEDIGGER TITAN', hp: 4500, speed: 1.4, reward: 2200,
+    color: 0x451a03, accent: 0xff6b00, scale: 2.4, isBoss: true, stunImmune: true,
+    desc: 'Wave 10 Boss. Seismic Slam stuns towers in radius 11; summons Brutes & Lead Juggernauts at 50% HP.'
+  },
+  boss2: {
+    id: 'boss2', name: 'MOLTEN WARLORD', hp: 32000, speed: 1.3, reward: 6500,
+    color: 0x450a0a, accent: 0xff3b00, scale: 2.75, isBoss: true, stunImmune: true, freezeImmune: true,
+    desc: 'Wave 20 Boss. Hurls Magma Meteors at highest-DPS towers and ignites a 6,000 HP Molten Shield at 50% HP.'
+  },
+  boss3: {
+    id: 'boss3', name: 'THE VOID OVERLORD', hp: 220000, shield: 40000, speed: 1.1, reward: 25000,
+    color: 0x090514, accent: 0xd946ef, scale: 3.2, isBoss: true, stunImmune: true, freezeImmune: true,
+    desc: 'Wave 30 Apex Leviathan. Wields Abyssal Cleave, Dimensional Rift, EMP Singularity, and Omega Enrage at 25% HP.'
+  }
+};
+
+const WAVE_DEFINITIONS = [
+  { wave: 1,  title: 'VANGUARD RECON',        bonus: 120, groups: [{ type: 'grunt', count: 6, interval: 1.5, delay: 0 }] },
+  { wave: 2,  title: 'PERIMETER BREACH',      bonus: 150, groups: [{ type: 'grunt', count: 10, interval: 1.2, delay: 0 }] },
+  { wave: 3,  title: 'HIGH-VOLTAGE RUSH',     bonus: 180, groups: [{ type: 'grunt', count: 8, interval: 1.1, delay: 0 }, { type: 'sprinter', count: 6, interval: 0.8, delay: 4 }] },
+  { wave: 4,  title: 'LIGHTNING BLITZ',       bonus: 220, groups: [{ type: 'sprinter', count: 14, interval: 0.65, delay: 0 }] },
+  { wave: 5,  title: 'HEAVY METAL',           bonus: 280, alert: 'COMMANDER: Heavy Iron Brutes inbound! Deploy high single-target firepower.', groups: [{ type: 'grunt', count: 10, interval: 1.0, delay: 0 }, { type: 'brute', count: 3, interval: 3.0, delay: 3 }] },
+  { wave: 6,  title: 'IRON PHALANX',          bonus: 340, groups: [{ type: 'brute', count: 6, interval: 2.4, delay: 0 }, { type: 'sprinter', count: 12, interval: 0.7, delay: 4 }] },
+  { wave: 7,  title: 'COMBINED ARMS',         bonus: 400, alert: 'ALERT: Stealth Phantom Stalkers detected for Wave 8! Upgrade Scouts or Snipers to Tier 2 now!', groups: [{ type: 'brute', count: 8, interval: 2.0, delay: 0 }, { type: 'grunt', count: 18, interval: 0.6, delay: 2 }] },
+  { wave: 8,  title: 'PHANTOM INCURSION',     bonus: 480, alert: 'ALERT: Armored Lead Juggernauts approaching on Wave 9! Deploy Snipers or Mortars on Cliffs!', groups: [{ type: 'phantom', count: 10, interval: 1.3, delay: 0 }, { type: 'sprinter', count: 10, interval: 0.8, delay: 5 }] },
+  { wave: 9,  title: 'LEAD WALL',             bonus: 560, alert: 'WARNING: Seismic readings off the chart! Wave 10 Boss (GRAVEDIGGER TITAN) imminent!', groups: [{ type: 'lead', count: 8, interval: 2.0, delay: 0 }, { type: 'phantom', count: 8, interval: 1.2, delay: 4 }] },
+  { wave: 10, title: 'BOSS: GRAVEDIGGER TITAN', bonus: 1100, groups: [{ type: 'brute', count: 4, interval: 1.8, delay: 0 }, { type: 'boss1', count: 1, interval: 5.0, delay: 4 }, { type: 'phantom', count: 8, interval: 1.4, delay: 8 }] },
+  { wave: 11, title: 'SHIELD BREAKERS',       bonus: 700, groups: [{ type: 'breacher', count: 10, interval: 1.6, delay: 0 }, { type: 'lead', count: 6, interval: 2.0, delay: 4 }] },
+  { wave: 12, title: 'NANO TRIAGE',           bonus: 800, groups: [{ type: 'brute', count: 8, interval: 1.6, delay: 0 }, { type: 'medic', count: 5, interval: 2.5, delay: 2 }] },
+  { wave: 13, title: 'AERIAL SUPREMACY',      bonus: 920, alert: 'COMMANDER: Airborne Wraith Valkyries inbound! Ground puddles cannot hit flying targets.', groups: [{ type: 'valkyrie', count: 10, interval: 1.4, delay: 0 }, { type: 'breacher', count: 8, interval: 1.5, delay: 5 }] },
+  { wave: 14, title: 'CLOAK & DAGGER',        bonus: 1050, groups: [{ type: 'phantom', count: 18, interval: 0.8, delay: 0 }, { type: 'medic', count: 6, interval: 2.0, delay: 3 }] },
+  { wave: 15, title: 'ARMORED CONVOY',        bonus: 1200, groups: [{ type: 'lead', count: 14, interval: 1.3, delay: 0 }, { type: 'valkyrie', count: 10, interval: 1.2, delay: 4 }] },
+  { wave: 16, title: 'FROSTBITTEN SWARM',     bonus: 1400, groups: [{ type: 'cryomutant', count: 10, interval: 1.4, delay: 0 }, { type: 'breacher', count: 12, interval: 1.1, delay: 4 }] },
+  { wave: 17, title: 'DARK RITUAL',           bonus: 1650, alert: 'WARNING: Void Necromancers detected! Eliminate them rapidly before they flood the track with Thralls.', groups: [{ type: 'necromancer', count: 3, interval: 4.5, delay: 0 }, { type: 'cryomutant', count: 8, interval: 1.5, delay: 3 }] },
+  { wave: 18, title: 'SKY & SHADOW',          bonus: 1900, groups: [{ type: 'valkyrie', count: 16, interval: 0.9, delay: 0 }, { type: 'phantom', count: 20, interval: 0.7, delay: 3 }] },
+  { wave: 19, title: 'LEGION OF BONE',        bonus: 2200, alert: 'CRITICAL ALERT: Thermal spike detected! Wave 20 Boss (MOLTEN WARLORD) incoming!', groups: [{ type: 'necromancer', count: 5, interval: 3.5, delay: 0 }, { type: 'lead', count: 15, interval: 1.0, delay: 3 }] },
+  { wave: 20, title: 'BOSS: MOLTEN WARLORD',  bonus: 3500, groups: [{ type: 'knight', count: 2, interval: 3.0, delay: 0 }, { type: 'boss2', count: 1, interval: 5.0, delay: 4 }, { type: 'medic', count: 6, interval: 2.0, delay: 7 }] },
+  { wave: 21, title: 'OBSIDIAN CRUSADE',      bonus: 2800, groups: [{ type: 'knight', count: 6, interval: 2.4, delay: 0 }, { type: 'breacher', count: 15, interval: 0.9, delay: 4 }] },
+  { wave: 22, title: 'TESLA OVERCHARGE',      bonus: 3200, groups: [{ type: 'berserker', count: 6, interval: 2.0, delay: 0 }, { type: 'cryomutant', count: 12, interval: 1.0, delay: 4 }] },
+  { wave: 23, title: 'SILENT ASSASSINS',      bonus: 3600, alert: 'ALERT: Elite cloaked Void Reavers approaching! Ensure high-DPS towers have Hidden Detection!', groups: [{ type: 'reaver', count: 5, interval: 2.2, delay: 0 }, { type: 'valkyrie', count: 16, interval: 0.8, delay: 4 }] },
+  { wave: 24, title: 'NECROPOLIS MARCH',      bonus: 4100, groups: [{ type: 'necromancer', count: 7, interval: 2.8, delay: 0 }, { type: 'knight', count: 6, interval: 2.2, delay: 3 }] },
+  { wave: 25, title: 'ROYAL VANGUARD',        bonus: 4800, alert: 'WARNING: Fallen Guardians marching! Watch out for their tower-stunning spear slams.', groups: [{ type: 'guardian', count: 2, interval: 5.0, delay: 0 }, { type: 'berserker', count: 8, interval: 1.6, delay: 4 }] },
+  { wave: 26, title: 'STORM OF STEEL',        bonus: 5500, groups: [{ type: 'reaver', count: 8, interval: 1.6, delay: 0 }, { type: 'knight', count: 8, interval: 1.8, delay: 4 }] },
+  { wave: 27, title: 'UNSTOPPABLE FORCE',     bonus: 6400, groups: [{ type: 'berserker', count: 12, interval: 1.3, delay: 0 }, { type: 'medic', count: 10, interval: 1.4, delay: 2 }] },
+  { wave: 28, title: 'IMPERIAL PRAETORIANS',  bonus: 7500, groups: [{ type: 'guardian', count: 4, interval: 4.0, delay: 0 }, { type: 'reaver', count: 8, interval: 1.5, delay: 5 }] },
+  { wave: 29, title: 'HARBINGERS OF THE VOID', bonus: 9000, alert: 'FINAL WARNING: Dimensional rupture at maximum! THE VOID OVERLORD arrives on Wave 30!', groups: [{ type: 'guardian', count: 4, interval: 3.5, delay: 0 }, { type: 'necromancer', count: 6, interval: 2.5, delay: 3 }, { type: 'berserker', count: 10, interval: 1.2, delay: 6 }] },
+  { wave: 30, title: 'FINAL BOSS: VOID OVERLORD', bonus: 25000, groups: [{ type: 'guardian', count: 2, interval: 4.0, delay: 0 }, { type: 'boss3', count: 1, interval: 6.0, delay: 5 }, { type: 'reaver', count: 6, interval: 2.5, delay: 12 }, { type: 'necromancer', count: 4, interval: 4.0, delay: 18 }] }
+];
+
+/* ============================================================================
+   2. EVENTBUS & REACTIVE STATE STORE
+   ============================================================================ */
+const state = {
+  difficulty: 'tactical',
+  cash: 650,
+  totalCashEarned: 650,
+  hp: 150,
+  maxHp: 150,
+  wave: 0,
+  maxWaves: 30,
+  waveActive: false,
+  waveElapsed: 0,
+  waveDuration: 25,
+  intermissionTimer: 0,
+  autoSkip: false,
+  timeScale: 1.0,
+  bloomEnabled: true,
+  audioEnabled: true,
+  totalDamageDealt: 0,
+  totalKills: 0,
+  maxTowerCap: 35,
+  placingTowerSpec: null,
+  selectedTower: null,
+  gameOver: false,
+  endlessMode: false,
+  cameraTrauma: 0
+};
+
+/* ============================================================================
+   3. PROCEDURAL AUDIO & MUSIC SYNTHESIZER (WEBAUDIO DSP ENGINE)
+   ============================================================================ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.sfxGain = null;
+    this.bgmGain = null;
+    this.analyser = null;
+    this.freqData = new Uint8Array(16);
+    this.stepIndex = 0;
+    this.nextStepTime = 0;
+    this.musicState = 'build'; // 'build' | 'combat' | 'boss'
+  }
+
+  init() {
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return;
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    this.ctx = new AudioCtx();
+    const comp = this.ctx.createDynamicsCompressor();
+    comp.threshold.value = -16;
+    comp.ratio.value = 6;
+    comp.connect(this.ctx.destination);
+
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.7;
+    this.master.connect(comp);
+
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 32;
+    this.master.connect(this.analyser);
+
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.value = 0.85;
+    this.sfxGain.connect(this.master);
+
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 0.28;
+    this.bgmGain.connect(this.master);
+
+    this.nextStepTime = this.ctx.currentTime + 0.1;
+  }
+
+  setMuted(muted) {
+    state.audioEnabled = !muted;
+    if (this.master && this.ctx) {
+      this.master.gain.setTargetAtTime(muted ? 0 : 0.7, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  play(type) {
+    if (!state.audioEnabled) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    if (type === 'scout') {
+      this._tone(460, 95, 0.07, 'triangle', 0.22, now);
+      this._noise(0.05, 1400, 0.15, now);
+    } else if (type === 'sniper') {
+      this._tone(130, 28, 0.22, 'sine', 0.45, now);
+      this._noise(0.18, 900, 0.35, now);
+    } else if (type === 'railgun') {
+      this._tone(180, 32, 0.28, 'sawtooth', 0.4, now);
+      this._tone(2200, 620, 0.25, 'sine', 0.25, now);
+      this._noise(0.22, 1800, 0.35, now);
+    } else if (type === 'minigun') {
+      this._tone(290, 90, 0.035, 'sawtooth', 0.11, now);
+    } else if (type === 'mortarLaunch') {
+      this._tone(160, 55, 0.18, 'sine', 0.32, now);
+    } else if (type === 'explosion') {
+      this._tone(95, 24, 0.45, 'sine', 0.5, now);
+      this._noise(0.42, 380, 0.45, now);
+    } else if (type === 'cryo') {
+      this._noise(0.12, 3200, 0.12, now);
+      this._tone(1900, 2600, 0.09, 'sine', 0.09, now);
+    } else if (type === 'beamCharge') {
+      this._tone(220, 880, 0.5, 'sawtooth', 0.16, now);
+    } else if (type === 'beamTick') {
+      this._tone(140, 110, 0.06, 'sawtooth', 0.09, now);
+    } else if (type === 'callToArms') {
+      [261.6, 329.6, 392.0, 523.2].forEach((f, i) => {
+        this._tone(f, f * 1.01, 0.45, 'sawtooth', 0.16, now + i * 0.06);
+      });
+    } else if (type === 'upgrade' || type === 'cash') {
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+        this._tone(f, f, 0.12, 'triangle', 0.18, now + i * 0.045);
+      });
+    } else if (type === 'place') {
+      this._tone(190, 85, 0.1, 'triangle', 0.3, now);
+      this._tone(640, 880, 0.08, 'sine', 0.15, now + 0.04);
+    } else if (type === 'error') {
+      this._tone(150, 130, 0.16, 'square', 0.2, now);
+    } else if (type === 'bossSiren') {
+      this._tone(440, 880, 0.35, 'sawtooth', 0.25, now);
+      this._tone(880, 440, 0.35, 'sawtooth', 0.25, now + 0.35);
+    }
+  }
+
+  _tone(fStart, fEnd, dur, wave, vol, startTime) {
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = wave;
+    osc.frequency.setValueAtTime(fStart, startTime);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, fEnd), startTime + dur);
+    g.gain.setValueAtTime(vol, startTime);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+    osc.connect(g);
+    g.connect(this.sfxGain);
+    osc.start(startTime);
+    osc.stop(startTime + dur + 0.02);
+  }
+
+  _noise(dur, filterFreq, vol, startTime) {
+    const len = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(filterFreq, startTime);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, startTime);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(this.sfxGain);
+    src.start(startTime);
+  }
+
+  updateMusic() {
+    if (!this.ctx || !state.audioEnabled || this.ctx.state !== 'running') return;
+    if (this.analyser) this.analyser.getByteFrequencyData(this.freqData);
+
+    const bpm = this.musicState === 'boss' ? 138 : (this.musicState === 'combat' ? 122 : 104);
+    const stepDur = (60 / bpm) / 4;
+    const bassNotes = [73.42, 73.42, 87.31, 73.42, 65.41, 65.41, 82.41, 98.00]; // D2 minor motif
+
+    while (this.nextStepTime < this.ctx.currentTime + 0.12) {
+      const s = this.stepIndex % 16;
+      const t = this.nextStepTime;
+      const note = bassNotes[Math.floor(s / 2) % bassNotes.length];
+
+      // Bass synth
+      if (s % 2 === 0 || this.musicState === 'boss') {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = this.musicState === 'boss' ? 'sawtooth' : 'triangle';
+        osc.frequency.setValueAtTime(note, t);
+        g.gain.setValueAtTime(0.18, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + stepDur * 0.9);
+        osc.connect(g);
+        g.connect(this.bgmGain);
+        osc.start(t);
+        osc.stop(t + stepDur);
+      }
+
+      // Kick on 0, 4, 8, 12 during combat/boss
+      if (this.musicState !== 'build' && s % 4 === 0) {
+        const kick = this.ctx.createOscillator();
+        const kg = this.ctx.createGain();
+        kick.frequency.setValueAtTime(125, t);
+        kick.frequency.exponentialRampToValueAtTime(32, t + 0.11);
+        kg.gain.setValueAtTime(0.32, t);
+        kg.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        kick.connect(kg);
+        kg.connect(this.bgmGain);
+        kick.start(t);
+        kick.stop(t + 0.13);
+      }
+
+      this.nextStepTime += stepDur;
+      this.stepIndex++;
+    }
+  }
+}
+
+const sound = new SoundEngine();
+
+/* ============================================================================
+   4. MATH, SPLINE & SPATIAL UTILITIES
+   ============================================================================ */
+const ROAD_WAYPOINTS = [
+  new THREE.Vector3(-34, 0, -26),
+  new THREE.Vector3(-14, 0, -26),
+  new THREE.Vector3(-14, 0, -10),
+  new THREE.Vector3(-28, 0, -10),
+  new THREE.Vector3(-28, 0,  12),
+  new THREE.Vector3( -4, 0,  12),
+  new THREE.Vector3( -4, 0,  -6),
+  new THREE.Vector3( 14, 0,  -6), // Central bridge crossing over plasma canal
+  new THREE.Vector3( 14, 0,  20),
+  new THREE.Vector3( 30, 0,  20),
+  new THREE.Vector3( 30, 0,  -2),
+  new THREE.Vector3( 34, 0, -22)
+];
+
+const roadCurve = new THREE.CatmullRomCurve3(ROAD_WAYPOINTS, false, 'centripetal', 0.25);
+const TOTAL_ROAD_LENGTH = roadCurve.getLength();
+const ROAD_SAMPLES = 400;
+const roadSamplePoints = roadCurve.getSpacedPoints(ROAD_SAMPLES);
+
+function lerpAngle(current, target, t) {
+  let diff = ((target - current + Math.PI) % (Math.PI * 2)) - Math.PI;
+  if (diff < -Math.PI) diff += Math.PI * 2;
+  return current + diff * Math.min(1, t);
+}
+
+function getClosestDistanceToRoad(xzPoint) {
+  let minDistSq = Infinity;
+  for (let i = 0; i <= ROAD_SAMPLES; i++) {
+    const p = roadSamplePoints[i];
+    const dx = xzPoint.x - p.x;
+    const dz = xzPoint.z - p.z;
+    const dSq = dx * dx + dz * dz;
+    if (dSq < minDistSq) minDistSq = dSq;
+  }
+  return Math.sqrt(minDistSq);
+}
+
+/* ============================================================================
+   5. SHADER & MATERIAL LIBRARY
+   ============================================================================ */
+const shaderUniforms = {
+  uTime: { value: 0 }
+};
+
+function createHexGridTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#151c26';
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = 'rgba(0, 242, 255, 0.11)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(2, 2, 252, 252);
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.06)';
+  ctx.beginPath();
+  ctx.moveTo(0, 128); ctx.lineTo(256, 128);
+  ctx.moveTo(128, 0); ctx.lineTo(128, 256);
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(28, 28);
+  return tex;
+}
+
+const portalShaderMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: shaderUniforms.uTime },
+  transparent: true,
+  side: THREE.DoubleSide,
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      vec2 p = vUv * 2.0 - 1.0;
+      float r = length(p);
+      float a = atan(p.y, p.x);
+      float swirl = sin(r * 14.0 - uTime * 5.0 + a * 3.0);
+      vec3 col = mix(vec3(0.85, 0.05, 0.35), vec3(0.45, 0.0, 0.95), swirl * 0.5 + 0.5);
+      col += vec3(0.3, 0.8, 1.0) * smoothstep(0.35, 0.0, r);
+      float alpha = smoothstep(1.0, 0.72, r);
+      gl_FragColor = vec4(col * 1.6, alpha);
+    }
+  `
+});
+
+const plasmaRiverShaderMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: shaderUniforms.uTime },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      float wave1 = sin(vUv.y * 32.0 + uTime * 2.4 + sin(vUv.x * 10.0));
+      float wave2 = cos(vUv.x * 20.0 - uTime * 1.8);
+      float energy = (wave1 * wave2) * 0.5 + 0.5;
+      vec3 c1 = vec3(0.02, 0.14, 0.28);
+      vec3 c2 = vec3(0.0, 0.85, 1.0);
+      vec3 finalCol = mix(c1, c2, pow(energy, 2.2));
+      gl_FragColor = vec4(finalCol, 1.0);
+    }
+  `
+});
+
+const roadChevronShaderMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: shaderUniforms.uTime },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+      // High-contrast tactical highway surface
+      vec3 asphalt = vec3(0.16, 0.22, 0.30);
+      float grid = step(0.96, fract(vUv.x * 90.0)) * 0.15;
+      asphalt += vec3(0.0, 0.6, 0.9) * grid;
+
+      // Hazard yellow/black striped outer shoulders
+      float distFromCenter = abs(vUv.y - 0.5);
+      float shoulderMask = smoothstep(0.36, 0.40, distFromCenter);
+      float hazardStripe = step(0.5, fract(vUv.x * 65.0 + vUv.y * 4.0));
+      vec3 hazardCol = mix(vec3(0.1, 0.1, 0.12), vec3(1.0, 0.72, 0.0), hazardStripe);
+
+      // Glowing neon cyan inner lane rails
+      float railLine = smoothstep(0.03, 0.0, abs(distFromCenter - 0.34));
+      vec3 railCol = vec3(0.0, 0.95, 1.0) * railLine * 1.35;
+
+      // Bright animated directional chevrons pointing toward Aegis Core
+      float chevShape = abs(vUv.y - 0.5) * 2.6;
+      float chevFlow = fract(vUv.x * 34.0 - uTime * 1.8 + chevShape);
+      float chevBand = smoothstep(0.65, 0.88, chevFlow) * (1.0 - smoothstep(0.88, 0.96, chevFlow));
+      float centerMask = smoothstep(0.30, 0.05, distFromCenter);
+      vec3 chevCol = mix(vec3(0.0, 0.95, 1.0), vec3(1.0, 0.35, 0.6), fract(vUv.x * 2.0)) * chevBand * centerMask * 1.25;
+
+      // Center dashed energy guide line
+      float centerLine = smoothstep(0.02, 0.0, distFromCenter) * step(0.4, fract(vUv.x * 45.0 - uTime * 1.8));
+      vec3 cLineCol = vec3(0.6, 1.0, 1.0) * centerLine * 0.9;
+
+      vec3 finalColor = mix(asphalt + railCol + chevCol + cLineCol, hazardCol, shoulderMask);
+      gl_FragColor = vec4(finalColor, 1.0);
+    }
+  `
+});
+
+/* ============================================================================
+   6. MAP & ENVIRONMENT BUILDER
+   ============================================================================ */
+const canvas = document.getElementById('webgl-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06090f);
+scene.fog = new THREE.FogExp2(0x06090f, 0.0045);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.25, 280);
+camera.position.set(0, 6.5, 14);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.mouseButtons = {
+  LEFT: null,
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: THREE.MOUSE.ROTATE
+};
+controls.maxPolarAngle = Math.PI * 0.485; // Позволяет смотреть горизонтально вдоль карты, как в Roblox
+controls.minPolarAngle = 0.08;
+controls.minDistance = 0.6; // Можно приблизить вплотную до вида от 1-го лица
+controls.maxDistance = 90;
+controls.target.set(0, 2.0, 2);
+
+// Post-processing pipeline
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.72, 0.35, 0.82);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// Lighting
+const hemiLight = new THREE.HemisphereLight(0x88bbff, 0x0f141c, 0.6);
+scene.add(hemiLight);
+
+const dirLight = new THREE.DirectionalLight(0xfff4e0, 1.8);
+dirLight.position.set(28, 55, 24);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.width = 2048;
+dirLight.shadow.mapSize.height = 2048;
+dirLight.shadow.camera.near = 5;
+dirLight.shadow.camera.far = 130;
+const dBound = 46;
+dirLight.shadow.camera.left = -dBound;
+dirLight.shadow.camera.right = dBound;
+dirLight.shadow.camera.top = dBound;
+dirLight.shadow.camera.bottom = -dBound;
+dirLight.shadow.bias = -0.0005;
+scene.add(dirLight);
+
+const rimLight = new THREE.DirectionalLight(0x0088ff, 0.6);
+rimLight.position.set(-35, 30, -30);
+scene.add(rimLight);
+
+const raycastTargets = [];
+const cliffBeaconMeshes = [];
+
+const CLIFF_MESAS = [
+  { x: -21, z: -18, w: 9.5, d: 8.5, h: 4.0 },
+  { x: -16, z:   3, w: 10.0, d: 8.5, h: 4.0 },
+  { x:   5, z:   6, w: 9.0, d: 9.0, h: 4.0 },
+  { x:  22, z:   7, w: 9.5, d: 10.0, h: 4.0 }
+];
+
+let spawnPortalGroup = null;
+let aegisCoreGroup = null;
+let aegisCoreCrystal = null;
+let aegisCoreRings = [];
+let aegisPointLight = null;
+
+function buildBattlefield() {
+  // 1. Ground Buildable Plateau (80x80)
+  const groundGeo = new THREE.BoxGeometry(84, 2, 76);
+  const groundMat = new THREE.MeshStandardMaterial({
+    map: createHexGridTexture(),
+    roughness: 0.78,
+    metalness: 0.22
+  });
+  const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+  groundMesh.position.set(0, -1.0, 0);
+  groundMesh.receiveShadow = true;
+  groundMesh.userData.surfaceType = 'GROUND';
+  scene.add(groundMesh);
+  raycastTargets.push(groundMesh);
+
+  // 2. Plasma Coolant Canal cutting under Central Bridge (x = 5)
+  const canalGeo = new THREE.PlaneGeometry(6.5, 76);
+  const canalMesh = new THREE.Mesh(canalGeo, plasmaRiverShaderMat);
+  canalMesh.rotation.x = -Math.PI / 2;
+  canalMesh.position.set(5, 0.03, 0);
+  scene.add(canalMesh);
+
+  // 3. High-Visibility 3D Enemy Highway Ribbon + Raised Curbs + Neon Guide Posts
+  const roadWidth = 3.8;
+  const roadGeo = new THREE.BufferGeometry();
+  const curbGeo = new THREE.BufferGeometry();
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+  const curbPositions = [];
+  const curbIndices = [];
+  const segs = 280;
+
+  for (let i = 0; i <= segs; i++) {
+    const u = i / segs;
+    const pt = roadCurve.getPointAt(u);
+    const tan = roadCurve.getTangentAt(u).normalize();
+    const norm = new THREE.Vector3(-tan.z, 0, tan.x);
+    const left = pt.clone().addScaledVector(norm, roadWidth * 0.5);
+    const right = pt.clone().addScaledVector(norm, -roadWidth * 0.5);
+
+    positions.push(left.x, 0.12, left.z, right.x, 0.12, right.z);
+    uvs.push(u, 0, u, 1);
+
+    // Outer raised curb strips on both sides of the road
+    const leftOuter = pt.clone().addScaledVector(norm, roadWidth * 0.5 + 0.38);
+    const rightOuter = pt.clone().addScaledVector(norm, -(roadWidth * 0.5 + 0.38));
+    curbPositions.push(
+      left.x, 0.26, left.z,
+      leftOuter.x, 0.26, leftOuter.z,
+      right.x, 0.26, right.z,
+      rightOuter.x, 0.26, rightOuter.z
+    );
+
+    if (i < segs) {
+      const base = i * 2;
+      indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+
+      const cBase = i * 4;
+      // Left curb quad
+      curbIndices.push(cBase, cBase + 1, cBase + 4, cBase + 1, cBase + 5, cBase + 4);
+      // Right curb quad
+      curbIndices.push(cBase + 2, cBase + 6, cBase + 3, cBase + 3, cBase + 6, cBase + 7);
+    }
+  }
+  roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  roadGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  roadGeo.setIndex(indices);
+  roadGeo.computeVertexNormals();
+
+  const roadMesh = new THREE.Mesh(roadGeo, roadChevronShaderMat);
+  roadMesh.receiveShadow = true;
+  scene.add(roadMesh);
+
+  curbGeo.setAttribute('position', new THREE.Float32BufferAttribute(curbPositions, 3));
+  curbGeo.setIndex(curbIndices);
+  curbGeo.computeVertexNormals();
+  const curbMat = new THREE.MeshStandardMaterial({
+    color: 0x334155,
+    emissive: 0x004466,
+    emissiveIntensity: 0.45,
+    roughness: 0.35,
+    metalness: 0.75,
+    side: THREE.DoubleSide
+  });
+  const curbMesh = new THREE.Mesh(curbGeo, curbMat);
+  curbMesh.castShadow = true;
+  curbMesh.receiveShadow = true;
+  scene.add(curbMesh);
+
+  // Glowing Roadside Tactical Guide Bollards along the route
+  const bollardGeo = new THREE.CylinderGeometry(0.12, 0.16, 0.55, 6);
+  const bollardMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
+  const bollardCapGeo = new THREE.SphereGeometry(0.13, 8, 8);
+  const bollardCapMat = new THREE.MeshStandardMaterial({ color: 0x00f2ff, emissive: 0x00f2ff, emissiveIntensity: 1.4 });
+
+  const bollardCount = 46;
+  const bollardMesh = new THREE.InstancedMesh(bollardGeo, bollardMat, bollardCount * 2);
+  const bollardCapMesh = new THREE.InstancedMesh(bollardCapGeo, bollardCapMat, bollardCount * 2);
+  const bDummy = new THREE.Object3D();
+  let bIdx = 0;
+  for (let i = 1; i < bollardCount; i++) {
+    const u = i / bollardCount;
+    const pt = roadCurve.getPointAt(u);
+    const tan = roadCurve.getTangentAt(u).normalize();
+    const norm = new THREE.Vector3(-tan.z, 0, tan.x);
+    [-1, 1].forEach(side => {
+      const pos = pt.clone().addScaledVector(norm, side * (roadWidth * 0.5 + 0.52));
+      bDummy.position.set(pos.x, 0.28, pos.z);
+      bDummy.updateMatrix();
+      bollardMesh.setMatrixAt(bIdx, bDummy.matrix);
+      bDummy.position.set(pos.x, 0.62, pos.z);
+      bDummy.updateMatrix();
+      bollardCapMesh.setMatrixAt(bIdx, bDummy.matrix);
+      bIdx++;
+    });
+  }
+  scene.add(bollardMesh, bollardCapMesh);
+
+  // Armored Overpass Bridge across the Plasma Canal (x = 5, z = -6)
+  const bridgeGroup = new THREE.Group();
+  bridgeGroup.position.set(5, 0, -6);
+  const bridgeDeck = new THREE.Mesh(
+    new THREE.BoxGeometry(8.2, 0.35, 5.4),
+    new THREE.MeshStandardMaterial({ color: 0x263244, roughness: 0.45, metalness: 0.75 })
+  );
+  bridgeDeck.position.y = 0.0;
+  bridgeGroup.add(bridgeDeck);
+
+  const railGeo = new THREE.BoxGeometry(8.2, 0.85, 0.32);
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x3b4c66, emissive: 0x00aaff, emissiveIntensity: 0.25, metalness: 0.8 });
+  const railN = new THREE.Mesh(railGeo, railMat);
+  railN.position.set(0, 0.5, -2.55);
+  const railS = railN.clone();
+  railS.position.z = 2.55;
+  bridgeGroup.add(railN, railS);
+  scene.add(bridgeGroup);
+
+  // 4. Elevated Tactical Cliff Mesas (y = 4.0)
+  const cliffRockMat = new THREE.MeshStandardMaterial({ color: 0x242e3d, roughness: 0.7, metalness: 0.3 });
+  const cliffTopMat = new THREE.MeshStandardMaterial({ color: 0x2e3b4e, roughness: 0.5, metalness: 0.4 });
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.0, wireframe: true });
+
+  CLIFF_MESAS.forEach(c => {
+    const mesaGroup = new THREE.Group();
+    mesaGroup.position.set(c.x, 0, c.z);
+
+    // Sloped base rock
+    const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(c.w + 1.2, c.h, c.d + 1.2), cliffRockMat);
+    baseMesh.position.y = c.h * 0.5;
+    baseMesh.castShadow = true;
+    baseMesh.receiveShadow = true;
+    mesaGroup.add(baseMesh);
+
+    // Buildable top bunker deck
+    const topDeck = new THREE.Mesh(new THREE.BoxGeometry(c.w, 0.3, c.d), cliffTopMat);
+    topDeck.position.y = c.h;
+    topDeck.receiveShadow = true;
+    topDeck.userData.surfaceType = 'CLIFF';
+    scene.add(topDeck);
+    topDeck.position.set(c.x, c.h, c.z);
+    raycastTargets.push(topDeck);
+
+    // Highlight beacon for cliff placement mode
+    const beacon = new THREE.Mesh(new THREE.BoxGeometry(c.w + 0.3, 1.2, c.d + 0.3), beaconMat.clone());
+    beacon.position.set(c.x, c.h + 0.6, c.z);
+    scene.add(beacon);
+    cliffBeaconMeshes.push(beacon);
+
+    // Ступенчатый пандус/лестница для подъема Roblox-аватара на клифф
+    const rampGroup = new THREE.Group();
+    const steps = 6;
+    for (let s = 0; s < steps; s++) {
+      const stepH = (c.h / steps) * (s + 1);
+      const stepMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, stepH, 0.7),
+        cliffTopMat
+      );
+      stepMesh.position.set(0, stepH * 0.5, c.d * 0.5 + 0.6 + (steps - 1 - s) * 0.65);
+      stepMesh.castShadow = true;
+      stepMesh.receiveShadow = true;
+      rampGroup.add(stepMesh);
+    }
+    mesaGroup.add(rampGroup);
+
+    scene.add(mesaGroup);
+  });
+
+  // 4b. Звездный купол и неоновый горизонт для красивого вида от 3-го и 1-го лица
+  const starGeo = new THREE.BufferGeometry();
+  const starCoords = [];
+  for (let i = 0; i < 600; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI * 0.46;
+    const r = 135 + Math.random() * 40;
+    starCoords.push(
+      Math.cos(theta) * Math.sin(phi) * r,
+      Math.cos(phi) * r + 8,
+      Math.sin(theta) * Math.sin(phi) * r
+    );
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starCoords, 3));
+  const starPoints = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x7dd3fc, size: 0.55, transparent: true, opacity: 0.75 }));
+  scene.add(starPoints);
+
+  // 5. Void Spawn Gate at u = 0.0
+  spawnPortalGroup = new THREE.Group();
+  const startPt = roadCurve.getPointAt(0);
+  spawnPortalGroup.position.copy(startPt);
+  const archMat = new THREE.MeshStandardMaterial({ color: 0x1e1b2e, roughness: 0.3, metalness: 0.8 });
+  const archFrame = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.55, 8, 24, Math.PI), archMat);
+  archFrame.position.y = 0.2;
+  spawnPortalGroup.add(archFrame);
+
+  const portalDisc = new THREE.Mesh(new THREE.CircleGeometry(3.2, 32), portalShaderMat);
+  portalDisc.position.y = 1.8;
+  spawnPortalGroup.add(portalDisc);
+
+  const portalLight = new THREE.PointLight(0xd946ef, 3.5, 16);
+  portalLight.position.set(0, 2.5, 1);
+  spawnPortalGroup.add(portalLight);
+  scene.add(spawnPortalGroup);
+
+  // 6. Aegis Core Citadel at u = 1.0
+  aegisCoreGroup = new THREE.Group();
+  const endPt = roadCurve.getPointAt(1);
+  aegisCoreGroup.position.copy(endPt);
+
+  const basePlatform = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.8, 4.4, 1.2, 8),
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.7 })
+  );
+  basePlatform.position.y = 0.6;
+  aegisCoreGroup.add(basePlatform);
+
+  aegisCoreCrystal = new THREE.Mesh(
+    new THREE.OctahedronGeometry(1.45, 0),
+    new THREE.MeshStandardMaterial({ color: 0x00f2ff, emissive: 0x00f2ff, emissiveIntensity: 1.5, roughness: 0.1 })
+  );
+  aegisCoreCrystal.position.y = 3.4;
+  aegisCoreGroup.add(aegisCoreCrystal);
+
+  for (let i = 0; i < 2; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.1 + i * 0.45, 0.09, 8, 32),
+      new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x00f2ff, emissiveIntensity: 0.8 })
+    );
+    ring.position.y = 3.4;
+    aegisCoreGroup.add(ring);
+    aegisCoreRings.push(ring);
+  }
+
+  aegisPointLight = new THREE.PointLight(0x00f2ff, 4.0, 20);
+  aegisPointLight.position.set(0, 4.0, 0);
+  aegisCoreGroup.add(aegisPointLight);
+  scene.add(aegisCoreGroup);
+
+  // 7. Perimeter Crystals & Tactical Crates
+  const crateGeo = new THREE.BoxGeometry(1.6, 1.4, 1.6);
+  const crateMat = new THREE.MeshStandardMaterial({ color: 0x263244, roughness: 0.6, metalness: 0.4 });
+  const propCoords = [
+    [-38, -15], [-38, 5], [-38, 24], [38, -12], [38, 12], [-5, -31], [15, -31], [-12, 29], [18, 31]
+  ];
+  propCoords.forEach(([px, pz]) => {
+    const m = new THREE.Mesh(crateGeo, crateMat);
+    m.position.set(px, 0.7, pz);
+    m.castShadow = true;
+    scene.add(m);
+  });
+}
+
+buildBattlefield();
+
+/* ============================================================================
+   6B. ROBLOX-STYLE 3D PLAYER AVATAR & THIRD/FIRST-PERSON CONTROLLER
+   ============================================================================ */
+const player = {
+  mode: 'roblox', // 'roblox' (следует за персонажем) | 'rts' (свободная камера)
+  povPreset: 0,   // 0: Близкое 3-е лицо, 1: Широкое 3-е лицо, 2: От 1-го лица
+  pos: new THREE.Vector3(0, 0, 2),
+  vel: new THREE.Vector3(0, 0, 0),
+  yaw: Math.PI,
+  speed: 13.5,
+  sprintMult: 1.55,
+  jumpForce: 14.5,
+  gravity: 34.0,
+  grounded: true,
+  jumpsLeft: 2,
+  walkTime: 0,
+  group: null,
+  rig: {}
+};
+
+function buildPlayerAvatar() {
+  const root = new THREE.Group();
+  root.position.copy(player.pos);
+
+  // Светящееся кольцо под ногами игрока
+  const footRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.55, 0.72, 24),
+    new THREE.MeshBasicMaterial({ color: 0x00ffaa, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+  );
+  footRing.rotation.x = -Math.PI / 2;
+  footRing.position.y = 0.04;
+  root.add(footRing);
+
+  const bodyGroup = new THREE.Group();
+  root.add(bodyGroup);
+
+  const torsoMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.35, metalness: 0.5 });
+  const vestMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.7 });
+  const limbMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.4 });
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.1 });
+  const neonMat = new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00ffaa, emissiveIntensity: 1.4 });
+
+  // Торс в пропорциях Roblox R15 с тактическим бронежилетом
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.05, 0.52), torsoMat);
+  torso.position.y = 1.42;
+  torso.castShadow = true;
+  bodyGroup.add(torso);
+
+  const vest = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.78, 0.58), vestMat);
+  vest.position.y = 1.44;
+  bodyGroup.add(vest);
+
+  const coreGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), neonMat);
+  coreGem.position.set(0, 1.48, 0.32);
+  bodyGroup.add(coreGem);
+
+  // Джетпак на спине для двойного прыжка на клиффы
+  const jetpack = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.72, 0.34), vestMat);
+  jetpack.position.set(0, 1.46, -0.38);
+  bodyGroup.add(jetpack);
+  [-0.2, 0.2].forEach(tx => {
+    const thruster = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.14, 0.26, 8), neonMat);
+    thruster.position.set(tx, 1.05, -0.38);
+    bodyGroup.add(thruster);
+  });
+
+  // Голова, шлем и кибер-визор
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 2.28, 0);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.68, 0.68), headMat);
+  head.castShadow = true;
+  const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.36, 0.76), vestMat);
+  helmet.position.y = 0.22;
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.20, 0.12), neonMat);
+  visor.position.set(0, 0.02, 0.34);
+  headGroup.add(head, helmet, visor);
+  bodyGroup.add(headGroup);
+
+  // Артикулированные ноги и руки
+  const legGeo = new THREE.BoxGeometry(0.42, 0.90, 0.44);
+  const leftLeg = new THREE.Mesh(legGeo, limbMat);
+  leftLeg.position.set(-0.24, 0.45, 0);
+  leftLeg.castShadow = true;
+  const rightLeg = new THREE.Mesh(legGeo, limbMat);
+  rightLeg.position.set(0.24, 0.45, 0);
+  rightLeg.castShadow = true;
+  bodyGroup.add(leftLeg, rightLeg);
+
+  const armGeo = new THREE.BoxGeometry(0.38, 0.92, 0.40);
+  const leftArm = new THREE.Mesh(armGeo, torsoMat);
+  leftArm.position.set(-0.68, 1.42, 0);
+  leftArm.castShadow = true;
+  const rightArm = new THREE.Mesh(armGeo, torsoMat);
+  rightArm.position.set(0.68, 1.42, 0);
+  rightArm.castShadow = true;
+  bodyGroup.add(leftArm, rightArm);
+
+  scene.add(root);
+  player.group = root;
+  player.rig = { bodyGroup, headGroup, leftLeg, rightLeg, leftArm, rightArm, footRing };
+}
+
+function getTerrainHeightAt(x, z) {
+  let maxH = 0.0;
+  for (let i = 0; i < CLIFF_MESAS.length; i++) {
+    const c = CLIFF_MESAS[i];
+    const halfW = c.w * 0.5 + 0.4;
+    const halfD = c.d * 0.5 + 0.4;
+    // Вершина клиффа
+    if (Math.abs(x - c.x) <= halfW && Math.abs(z - c.z) <= halfD) {
+      maxH = Math.max(maxH, c.h);
+    }
+    // Пандус/лестница с южной стороны клиффа
+    const rampZStart = c.z + c.d * 0.5;
+    const rampZEnd = rampZStart + 4.4;
+    if (Math.abs(x - c.x) <= 1.35 && z >= rampZStart && z <= rampZEnd) {
+      const t = 1.0 - (z - rampZStart) / (rampZEnd - rampZStart);
+      maxH = Math.max(maxH, t * c.h);
+    }
+  }
+  return maxH;
+}
+
+function updatePlayerAvatar(dt) {
+  if (!player.group) return;
+
+  // Векторы направления камеры в горизонтальной плоскости XZ (как в Roblox)
+  const camForward = new THREE.Vector3();
+  camera.getWorldDirection(camForward);
+  camForward.y = 0;
+  if (camForward.lengthSq() > 0.0001) camForward.normalize();
+  const camRight = new THREE.Vector3(-camForward.z, 0, camForward.x);
+
+  const moveDir = new THREE.Vector3();
+  if (keyState['KeyW'] || keyState['ArrowUp']) moveDir.add(camForward);
+  if (keyState['KeyS'] || keyState['ArrowDown']) moveDir.sub(camForward);
+  if (keyState['KeyD'] || keyState['ArrowRight']) moveDir.add(camRight);
+  if (keyState['KeyA'] || keyState['ArrowLeft']) moveDir.sub(camRight);
+
+  const isMoving = moveDir.lengthSq() > 0.001;
+  const isSprinting = keyState['ShiftLeft'] || keyState['ShiftRight'];
+  const effSpeed = player.speed * (isSprinting ? player.sprintMult : 1.0);
+
+  if (player.mode === 'roblox') {
+    const prevPos = player.pos.clone();
+
+    if (isMoving) {
+      moveDir.normalize();
+      player.pos.x += moveDir.x * effSpeed * dt;
+      player.pos.z += moveDir.z * effSpeed * dt;
+      const targetYaw = Math.atan2(moveDir.x, moveDir.z);
+      player.yaw = lerpAngle(player.yaw, targetYaw, dt * 14);
+    }
+
+    // Ограничение в пределах острова (80x72)
+    player.pos.x = THREE.MathUtils.clamp(player.pos.x, -39.5, 39.5);
+    player.pos.z = THREE.MathUtils.clamp(player.pos.z, -35.5, 35.5);
+
+    // Проверка высоты рельефа и коллизии со стенами клиффов
+    let targetGroundY = getTerrainHeightAt(player.pos.x, player.pos.z);
+    if (targetGroundY - player.pos.y > 1.35) {
+      // Если игрок уперся в высокую стену клиффа без прыжка — не пускаем внутрь скалы
+      player.pos.x = prevPos.x;
+      player.pos.z = prevPos.z;
+      targetGroundY = getTerrainHeightAt(player.pos.x, player.pos.z);
+    }
+
+    // Вертикальная физика и прыжки
+    player.vel.y -= player.gravity * dt;
+    player.pos.y += player.vel.y * dt;
+
+    if (player.pos.y <= targetGroundY) {
+      player.pos.y = targetGroundY;
+      player.vel.y = 0;
+      player.grounded = true;
+      player.jumpsLeft = 2;
+    } else {
+      player.grounded = false;
+    }
+
+    // Сдвигаем камеру и точку фокуса OrbitControls вместе с персонажем
+    const deltaMove = player.pos.clone().sub(prevPos);
+    camera.position.add(deltaMove);
+    const desiredTarget = new THREE.Vector3(player.pos.x, player.pos.y + 2.1, player.pos.z);
+    controls.target.lerp(desiredTarget, Math.min(1, dt * 18));
+
+    // Автоматическое скрытие тела персонажа при приближении камеры вплотную (вид от 1-го лица как в Roblox)
+    const camDist = camera.position.distanceTo(controls.target);
+    player.rig.bodyGroup.visible = camDist > 1.65;
+  } else {
+    // В режиме RTS свободной камеры WASD двигает камеру по плоскости
+    player.rig.bodyGroup.visible = true;
+    if (isMoving) {
+      moveDir.normalize();
+      const panStep = 32 * dt;
+      camera.position.addScaledVector(moveDir, panStep);
+      controls.target.addScaledVector(moveDir, panStep);
+    }
+  }
+
+  // Применяем позицию и поворот к 3D-модели персонажа
+  player.group.position.copy(player.pos);
+  player.rig.bodyGroup.rotation.y = player.yaw;
+
+  // Анимация рук и ног при беге / прыжке
+  if (!player.grounded) {
+    player.rig.leftArm.rotation.x = THREE.MathUtils.lerp(player.rig.leftArm.rotation.x, -2.5, dt * 12);
+    player.rig.rightArm.rotation.x = THREE.MathUtils.lerp(player.rig.rightArm.rotation.x, -2.5, dt * 12);
+    player.rig.leftLeg.rotation.x = THREE.MathUtils.lerp(player.rig.leftLeg.rotation.x, 0.45, dt * 12);
+    player.rig.rightLeg.rotation.x = THREE.MathUtils.lerp(player.rig.rightLeg.rotation.x, -0.35, dt * 12);
+  } else if (isMoving && player.mode === 'roblox') {
+    player.walkTime += dt * (isSprinting ? 16 : 11);
+    const swing = Math.sin(player.walkTime) * 0.75;
+    player.rig.leftLeg.rotation.x = swing;
+    player.rig.rightLeg.rotation.x = -swing;
+    player.rig.leftArm.rotation.x = -swing * 0.85;
+    player.rig.rightArm.rotation.x = swing * 0.85;
+  } else {
+    player.rig.leftLeg.rotation.x = THREE.MathUtils.lerp(player.rig.leftLeg.rotation.x, 0, dt * 10);
+    player.rig.rightLeg.rotation.x = THREE.MathUtils.lerp(player.rig.rightLeg.rotation.x, 0, dt * 10);
+    player.rig.leftArm.rotation.x = THREE.MathUtils.lerp(player.rig.leftArm.rotation.x, 0, dt * 10);
+    player.rig.rightArm.rotation.x = THREE.MathUtils.lerp(player.rig.rightArm.rotation.x, 0, dt * 10);
+  }
+}
+
+function triggerPlayerJump() {
+  if (player.mode !== 'roblox') return;
+  if (player.jumpsLeft > 0) {
+    const isDoubleJump = !player.grounded && player.jumpsLeft === 1;
+    player.vel.y = isDoubleJump ? player.jumpForce * 1.15 : player.jumpForce;
+    player.grounded = false;
+    player.jumpsLeft--;
+    sound.play('place');
+    emitParticles(
+      player.pos.clone().add(new THREE.Vector3(0, 0.8, 0)),
+      isDoubleJump ? 18 : 8,
+      isDoubleJump ? 0x00f2ff : 0x00ffaa,
+      isDoubleJump ? 5.0 : 2.8
+    );
+  }
+}
+
+function toggleCameraMode() {
+  player.mode = player.mode === 'roblox' ? 'rts' : 'roblox';
+  const btn = document.getElementById('btn-cam-mode');
+  if (player.mode === 'roblox') {
+    controls.enablePan = false;
+    controls.mouseButtons = {
+      LEFT: null,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.ROTATE
+    };
+    btn.textContent = '[V] ROBLOX 3D: ВКЛ';
+    btn.className = 'tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech font-bold bg-emerald-500/25 text-emerald-300 border border-emerald-400/60';
+    setPlayerCameraPOV(player.povPreset);
+    showCommsToast('РЕЖИМ ROBLOX АКТИВИРОВАН: Ходите на WASD, зажимайте ПКМ (правую кнопку мыши) для поворота камеры, ЛКМ — для постройки башен!', 'success');
+  } else {
+    controls.enablePan = true;
+    controls.mouseButtons = {
+      LEFT: null,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.ROTATE
+    };
+    btn.textContent = '[V] КАМЕРА: СВОБОДНАЯ';
+    btn.className = 'tactical-btn px-2 py-1 rounded text-[11px] font-mono-tech font-bold bg-amber-500/25 text-amber-300 border border-amber-400/60';
+    camera.position.set(player.pos.x, 42, player.pos.z + 38);
+    controls.target.set(player.pos.x, 0, player.pos.z);
+    showCommsToast('СВОБОДНАЯ ТАКТИЧЕСКАЯ КАМЕРА: Поворот зажатой ПКМ, перемещение на WASD.', 'info');
+  }
+}
+
+function setPlayerCameraPOV(presetIndex) {
+  player.povPreset = presetIndex % 3;
+  const btn = document.getElementById('btn-cam-pov');
+  const backDir = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+
+  if (player.povPreset === 0) {
+    // Классический вид от 3-го лица из-за спины как в Roblox
+    btn.textContent = '[C] ВИД: 3-Е ЛИЦО';
+    camera.position.copy(player.pos).addScaledVector(backDir, -10.5).add(new THREE.Vector3(0, 5.2, 0));
+  } else if (player.povPreset === 1) {
+    // Вид от 1-го лица (вплотную из глаз персонажа)
+    btn.textContent = '[C] ВИД: 1-Е ЛИЦО';
+    camera.position.copy(player.pos).addScaledVector(backDir, -0.7).add(new THREE.Vector3(0, 2.2, 0));
+  } else {
+    // Тактический дальний вид от 3-го лица
+    btn.textContent = '[C] ВИД: ДАЛЬНИЙ';
+    camera.position.copy(player.pos).addScaledVector(backDir, -22.0).add(new THREE.Vector3(0, 14.0, 0));
+  }
+  controls.target.set(player.pos.x, player.pos.y + 2.1, player.pos.z);
+}
+
+buildPlayerAvatar();
+setPlayerCameraPOV(0);
+
+/* ============================================================================
+   7. PROCEDURAL 3D ASSET FACTORY (TOWERS TIERS 0-4, ENEMIES, BOSSES, VEHICLES)
+   ============================================================================ */
+const sharedGeos = {
+  octPedestal: new THREE.CylinderGeometry(1.05, 1.24, 0.28, 8),
+  innerTurretRing: new THREE.CylinderGeometry(0.82, 0.88, 0.14, 12),
+  stabilizerFoot: new THREE.BoxGeometry(0.32, 0.20, 0.48),
+  boot: new THREE.BoxGeometry(0.24, 0.16, 0.38),
+  shin: new THREE.CylinderGeometry(0.11, 0.09, 0.42, 8),
+  kneePad: new THREE.BoxGeometry(0.18, 0.16, 0.12),
+  thigh: new THREE.CylinderGeometry(0.13, 0.11, 0.38, 8),
+  pelvis: new THREE.BoxGeometry(0.52, 0.20, 0.36),
+  torso: new THREE.BoxGeometry(0.62, 0.64, 0.40),
+  chestPlate: new THREE.BoxGeometry(0.56, 0.42, 0.14),
+  collar: new THREE.CylinderGeometry(0.24, 0.28, 0.14, 8),
+  head: new THREE.SphereGeometry(0.23, 14, 12),
+  helmet: new THREE.SphereGeometry(0.26, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62),
+  visor: new THREE.BoxGeometry(0.38, 0.11, 0.20),
+  pauldron: new THREE.BoxGeometry(0.28, 0.28, 0.42),
+  upperArm: new THREE.CylinderGeometry(0.09, 0.08, 0.36, 8),
+  forearm: new THREE.BoxGeometry(0.16, 0.16, 0.38),
+  barrel: new THREE.CylinderGeometry(0.06, 0.06, 1.1, 10)
+};
+
+function buildDetailedHumanoidChassis(yawGroup, pitchGroup, tier, mats) {
+  const { armorMat, secondaryMat, darkMetalMat, accentMat, skinMat } = mats;
+
+  // 1. Tactical Boots & Articulated Legs (Wide combat stance)
+  [-0.20, 0.20].forEach(lx => {
+    const boot = new THREE.Mesh(sharedGeos.boot, darkMetalMat);
+    boot.position.set(lx, 0.08, 0.05);
+    const shin = new THREE.Mesh(sharedGeos.shin, armorMat);
+    shin.position.set(lx, 0.34, 0);
+    const knee = new THREE.Mesh(sharedGeos.kneePad, secondaryMat);
+    knee.position.set(lx, 0.52, 0.11);
+    const thigh = new THREE.Mesh(sharedGeos.thigh, secondaryMat);
+    thigh.position.set(lx, 0.68, 0);
+    yawGroup.add(boot, shin, knee, thigh);
+  });
+
+  // 2. Pelvis & Tactical Utility Belt with Pouches
+  const pelvis = new THREE.Mesh(sharedGeos.pelvis, darkMetalMat);
+  pelvis.position.set(0, 0.86, 0);
+  yawGroup.add(pelvis);
+
+  for (let p = -1; p <= 1; p += 2) {
+    const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.18), secondaryMat);
+    pouch.position.set(p * 0.29, 0.87, 0.05);
+    yawGroup.add(pouch);
+  }
+
+  // 3. Armored Torso, Ballistic Chest Rig & Reactor Core
+  const torso = new THREE.Mesh(sharedGeos.torso, armorMat);
+  torso.position.set(0, 1.24, 0);
+  torso.castShadow = true;
+  yawGroup.add(torso);
+
+  const chestPlate = new THREE.Mesh(sharedGeos.chestPlate, secondaryMat);
+  chestPlate.position.set(0, 1.28, 0.18);
+  yawGroup.add(chestPlate);
+
+  if (tier >= 1) {
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), accentMat);
+    core.position.set(0, 1.30, 0.26);
+    yawGroup.add(core);
+  }
+
+  // 4. Collar, Sculpted Head, Evolving Helmet & Optics
+  const collar = new THREE.Mesh(sharedGeos.collar, darkMetalMat);
+  collar.position.set(0, 1.58, 0);
+  const head = new THREE.Mesh(sharedGeos.head, tier >= 3 ? darkMetalMat : skinMat);
+  head.position.set(0, 1.76, 0);
+  const helmet = new THREE.Mesh(sharedGeos.helmet, secondaryMat);
+  helmet.position.set(0, 1.77, 0);
+  yawGroup.add(collar, head, helmet);
+
+  // Comms Ear-Piece & Antenna
+  const earComms = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.52, 8), darkMetalMat);
+  earComms.rotation.z = Math.PI / 2;
+  earComms.position.set(0, 1.76, 0);
+  yawGroup.add(earComms);
+
+  if (tier >= 1) {
+    const visor = new THREE.Mesh(sharedGeos.visor, accentMat);
+    visor.position.set(0, 1.76, 0.16);
+    yawGroup.add(visor);
+  }
+  if (tier >= 2) {
+    // Dual NVG / Thermal Optic Tubes on Helmet
+    [-0.09, 0.09].forEach(ox => {
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.18, 8), darkMetalMat);
+      tube.rotation.x = Math.PI / 2;
+      tube.position.set(ox, 1.82, 0.25);
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(0.04, 8), accentMat);
+      lens.position.set(ox, 1.82, 0.345);
+      yawGroup.add(tube, lens);
+    });
+  }
+
+  // 5. Evolving Pauldrons & Backpack Power Modules
+  [-0.42, 0.42].forEach(sx => {
+    const pauldron = new THREE.Mesh(sharedGeos.pauldron, secondaryMat);
+    pauldron.position.set(sx, 1.42, 0);
+    pauldron.scale.setScalar(0.85 + tier * 0.08);
+    yawGroup.add(pauldron);
+
+    if (tier >= 2) {
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.06, 0.44), accentMat);
+      trim.position.set(sx, 1.54, 0);
+      yawGroup.add(trim);
+    }
+  });
+
+  if (tier >= 1) {
+    const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.26), darkMetalMat);
+    backpack.position.set(0, 1.24, -0.30);
+    yawGroup.add(backpack);
+
+    if (tier >= 2) {
+      [-0.14, 0.14].forEach(vx => {
+        const cell = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.48, 8), accentMat);
+        cell.position.set(vx, 1.26, -0.42);
+        yawGroup.add(cell);
+      });
+    }
+  }
+
+  // 6. Articulated Arms attached to pitchGroup so arms recoil with weapon
+  [-0.36, 0.36].forEach(ax => {
+    const uArm = new THREE.Mesh(sharedGeos.upperArm, armorMat);
+    uArm.rotation.x = Math.PI * 0.18;
+    uArm.position.set(ax, 0.12, -0.05);
+    const fArm = new THREE.Mesh(sharedGeos.forearm, secondaryMat);
+    fArm.position.set(ax * 0.88, -0.02, 0.22);
+    pitchGroup.add(uArm, fArm);
+  });
+}
+
+function rebuildTowerVisuals(tower) {
+  while (tower.visualRoot.children.length > 0) {
+    tower.visualRoot.remove(tower.visualRoot.children[0]);
+  }
+
+  const tier = tower.tier; // 0 to 4
+  const spec = tower.spec;
+  const isApex = tier === 4;
+
+  const armorColors = [0x475569, 0x3b4c63, 0x283548, 0x1a2232, 0x14141c];
+  const secondaryColors = [0x64748b, 0x475569, 0x334155, 0x1e293b, 0x292524];
+  const accentColors = [0x38bdf8, 0x00f2ff, 0x00ffaa, 0xc084fc, 0xffbe0b];
+
+  const mats = {
+    armorMat: new THREE.MeshStandardMaterial({
+      color: armorColors[tier],
+      roughness: isApex ? 0.22 : 0.5,
+      metalness: isApex ? 0.85 : 0.45
+    }),
+    secondaryMat: new THREE.MeshStandardMaterial({
+      color: isApex ? 0xd97706 : secondaryColors[tier],
+      roughness: 0.35,
+      metalness: isApex ? 0.9 : 0.6
+    }),
+    darkMetalMat: new THREE.MeshStandardMaterial({ color: 0x181f29, roughness: 0.38, metalness: 0.85 }),
+    accentMat: new THREE.MeshStandardMaterial({
+      color: accentColors[tier],
+      emissive: accentColors[tier],
+      emissiveIntensity: 0.85 + tier * 0.28
+    }),
+    skinMat: new THREE.MeshStandardMaterial({ color: 0xd6b49a, roughness: 0.65, metalness: 0.05 }),
+    glassMat: new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.5, transparent: true, opacity: 0.65 })
+  };
+
+  const { armorMat, secondaryMat, darkMetalMat, accentMat, glassMat } = mats;
+
+  // 1. Multi-Part Armored Pedestal Foundation with Outriggers & Tier Chevrons
+  const pedScale = spec.radius * 0.92;
+  const pedestal = new THREE.Mesh(sharedGeos.octPedestal, darkMetalMat);
+  pedestal.scale.set(pedScale, 1 + tier * 0.1, pedScale);
+  pedestal.position.y = 0.14;
+  pedestal.castShadow = true;
+  pedestal.receiveShadow = true;
+  tower.visualRoot.add(pedestal);
+
+  const turretRing = new THREE.Mesh(sharedGeos.innerTurretRing, secondaryMat);
+  turretRing.scale.set(pedScale, 1, pedScale);
+  turretRing.position.y = 0.30;
+  tower.visualRoot.add(turretRing);
+
+  // 4 Corner Hydraulic Outrigger Feet
+  for (let c = 0; c < 4; c++) {
+    const ang = (c / 4) * Math.PI * 2 + Math.PI / 4;
+    const foot = new THREE.Mesh(sharedGeos.stabilizerFoot, secondaryMat);
+    foot.position.set(Math.cos(ang) * pedScale * 0.95, 0.11, Math.sin(ang) * pedScale * 0.95);
+    foot.rotation.y = -ang + Math.PI / 2;
+    tower.visualRoot.add(foot);
+
+    if (c < tier) {
+      const tierPip = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.08, 0.12), accentMat);
+      tierPip.position.set(Math.cos(ang) * pedScale * 1.02, 0.24, Math.sin(ang) * pedScale * 1.02);
+      tierPip.rotation.y = -ang + Math.PI / 2;
+      tower.visualRoot.add(tierPip);
+    }
+  }
+
+  // Glowing Base Neon Trim Ring
+  const trimRing = new THREE.Mesh(new THREE.TorusGeometry(pedScale * 0.96, 0.045, 8, 24), accentMat);
+  trimRing.rotation.x = Math.PI / 2;
+  trimRing.position.y = 0.29;
+  tower.visualRoot.add(trimRing);
+
+  // Turret Yaw Group (rotates toward target)
+  const yawGroup = new THREE.Group();
+  yawGroup.position.y = 0.34;
+  tower.visualRoot.add(yawGroup);
+  tower.yawGroup = yawGroup;
+
+  // Pitch / Recoil Group
+  const pitchGroup = new THREE.Group();
+  pitchGroup.position.y = 1.22;
+  yawGroup.add(pitchGroup);
+  tower.pitchGroup = pitchGroup;
+  tower.rotaryBarrels = null;
+  tower.spinPart = null;
+  tower.djBars = [];
+
+  if (spec.id === 'farm') {
+    // QUANTUM FARM: Hexagonal Hydroponics -> Solar Array -> Antimatter Dyson Reactor
+    const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 1.28, 0.36, 6), secondaryMat);
+    basin.position.y = 0.18;
+    const soil = new THREE.Mesh(new THREE.CylinderGeometry(1.06, 1.06, 0.38, 6), darkMetalMat);
+    soil.position.y = 0.19;
+    yawGroup.add(basin, soil);
+
+    // 3 Corner Containment Pylons
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85 + tier * 0.18, 0.22), armorMat);
+      pylon.position.set(Math.cos(a) * 0.95, 0.55, Math.sin(a) * 0.95);
+      const emitter = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), accentMat);
+      emitter.position.set(Math.cos(a) * 0.95, 1.0 + tier * 0.18, Math.sin(a) * 0.95);
+      yawGroup.add(pylon, emitter);
+    }
+
+    // Glowing Bio-Crystal Clusters
+    const crystalCount = 5 + tier * 2;
+    for (let i = 0; i < crystalCount; i++) {
+      const ang = (i / crystalCount) * Math.PI * 2;
+      const r = 0.35 + (i % 2) * 0.28;
+      const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.55 + tier * 0.1, 5), accentMat);
+      crystal.position.set(Math.cos(ang) * r, 0.55, Math.sin(ang) * r);
+      crystal.rotation.z = (Math.random() - 0.5) * 0.25;
+      yawGroup.add(crystal);
+    }
+
+    // Solar Wings at T2+
+    if (tier >= 2) {
+      [-1.15, 1.15].forEach(wx => {
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.06, 0.95), glassMat);
+        panel.position.set(wx, 0.75, 0);
+        panel.rotation.z = wx > 0 ? -0.35 : 0.35;
+        yawGroup.add(panel);
+      });
+    }
+
+    // Spinning Harvester Gantry / Dyson Torus Reactor
+    const spinner = new THREE.Group();
+    spinner.position.y = 1.25 + tier * 0.12;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.07, 8, 24), accentMat);
+    ring.rotation.x = Math.PI / 2;
+    spinner.add(ring);
+    if (tier >= 3) {
+      const coreSun = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 1), accentMat);
+      spinner.add(coreSun);
+    }
+    yawGroup.add(spinner);
+    tower.spinPart = spinner;
+  } else if (spec.id === 'dj') {
+    // DJ BOOTH: Cyber-Festival Stage, Dual Speaker Stacks, Turntables, DJ Operative & Equalizer
+    const stageDeck = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.35, 1.5), darkMetalMat);
+    stageDeck.position.y = 0.18;
+    yawGroup.add(stageDeck);
+
+    // Dual Subwoofer Speaker Stacks (Left & Right)
+    [-0.82, 0.82].forEach(sx => {
+      const cabinet = new THREE.Mesh(new THREE.BoxGeometry(0.52, 1.35 + tier * 0.12, 0.55), armorMat);
+      cabinet.position.set(sx, 0.82, -0.2);
+      yawGroup.add(cabinet);
+      [0.58, 1.08].forEach(cy => {
+        const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.12, 0.12, 12), accentMat);
+        cone.rotation.x = Math.PI / 2;
+        cone.position.set(sx, cy, 0.06);
+        yawGroup.add(cone);
+      });
+    });
+
+    // Overhead Lighting Truss Arch (T2+)
+    if (tier >= 2) {
+      const topBeam = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.16, 0.18), secondaryMat);
+      topBeam.position.set(0, 1.85, -0.2);
+      yawGroup.add(topBeam);
+    }
+
+    // Center Mixer Desk & Dual Vinyl Turntables
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.68, 0.52), secondaryMat);
+    desk.position.set(0, 0.65, 0.28);
+    yawGroup.add(desk);
+
+    [-0.28, 0.28].forEach(tx => {
+      const platter = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.20, 0.05, 16), accentMat);
+      platter.position.set(tx, 1.02, 0.28);
+      yawGroup.add(platter);
+    });
+
+    // DJ Character with Headphones behind the Decks
+    const djTorso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.55, 0.30), armorMat);
+    djTorso.position.set(0, 0.95, -0.05);
+    const djHead = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 10), darkMetalMat);
+    djHead.position.set(0, 1.40, -0.05);
+    const djVisor = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.10, 0.16), accentMat);
+    djVisor.position.set(0, 1.40, 0.08);
+    yawGroup.add(djTorso, djHead, djVisor);
+
+    // 8 Dynamic Holographic Equalizer Bars
+    for (let i = 0; i < 8; i++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.85, 0.10), accentMat);
+      bar.position.set(-0.63 + i * 0.18, 1.15, -0.52);
+      yawGroup.add(bar);
+      tower.djBars.push(bar);
+    }
+  } else if (spec.id === 'mech') {
+    // MECH FACTORY: Armored Hangar Bay, Gantry Frame, Fuel Silos & Rotating Radar Array
+    const hangar = new THREE.Mesh(new THREE.BoxGeometry(2.15, 1.42, 2.05), armorMat);
+    hangar.position.y = 0.71;
+    hangar.castShadow = true;
+    yawGroup.add(hangar);
+
+    // Ribbed Roof Armor & Blast Door Frame
+    for (let r = -0.6; r <= 0.6; r += 0.6) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.14, 0.26), secondaryMat);
+      rib.position.set(0, 1.45, r);
+      yawGroup.add(rib);
+    }
+
+    const portalDoor = new THREE.Mesh(new THREE.BoxGeometry(1.36, 1.05, 2.12), accentMat);
+    portalDoor.position.y = 0.54;
+    yawGroup.add(portalDoor);
+
+    // Side Pressurized Fuel Silos
+    [-1.22, 1.22].forEach(fx => {
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 1.15, 10), secondaryMat);
+      tank.position.set(fx, 0.62, -0.25);
+      yawGroup.add(tank);
+    });
+
+    // Rooftop Radar Dish & Comms Mast
+    const radarGroup = new THREE.Group();
+    radarGroup.position.set(0, 1.65, 0);
+    const dish = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.28, 10), accentMat);
+    dish.rotation.x = Math.PI * 0.35;
+    radarGroup.add(dish);
+    yawGroup.add(radarGroup);
+    tower.spinPart = radarGroup;
+  } else if (spec.id === 'mortar') {
+    // MORTAR ARTILLERY: Heavy Siege Carriage, Trunnion A-Frames, Hydraulic Pistons, Ammo Rack & Howitzer
+    const carriage = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.32, 1.45), darkMetalMat);
+    carriage.position.y = 0.16;
+    yawGroup.add(carriage);
+
+    // Side Trunnion Walls
+    [-0.52, 0.52].forEach(wx => {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.85, 1.05), armorMat);
+      wall.position.set(wx, 0.62, -0.1);
+      yawGroup.add(wall);
+    });
+
+    // Ready Warhead Rack beside the gun
+    for (let s = 0; s < 3; s++) {
+      const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.55, 8), accentMat);
+      shell.position.set(-0.82, 0.42, -0.35 + s * 0.28);
+      yawGroup.add(shell);
+    }
+
+    pitchGroup.position.set(0, 0.82, -0.1);
+    const breech = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.48, 0.82), secondaryMat);
+    pitchGroup.add(breech);
+
+    // Twin Hydraulic Recoil Cylinders
+    [-0.26, 0.26].forEach(hx => {
+      const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.15, 8), accentMat);
+      piston.rotation.x = Math.PI * 0.30;
+      piston.position.set(hx, 0.38, 0.35);
+      pitchGroup.add(piston);
+    });
+
+    const tubeCount = tier >= 3 ? 2 : 1;
+    for (let b = 0; b < tubeCount; b++) {
+      const offset = tubeCount === 2 ? (b === 0 ? -0.24 : 0.24) : 0;
+      const cannon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.20 + tier * 0.025, 0.26 + tier * 0.025, 1.75 + tier * 0.16, 14),
+        darkMetalMat
+      );
+      cannon.rotation.x = Math.PI * 0.30;
+      cannon.position.set(offset, 0.52, 0.55);
+
+      const muzzleCollar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.26 + tier * 0.03, 0.26 + tier * 0.03, 0.24, 14),
+        accentMat
+      );
+      muzzleCollar.rotation.x = Math.PI * 0.30;
+      muzzleCollar.position.set(offset, 0.98, 1.12);
+      pitchGroup.add(cannon, muzzleCollar);
+    }
+  } else {
+    // HUMANOID / EXO-SUIT OPERATIVES: Scout, Sniper, Minigunner, Cryo, Accelerator, Commander
+    buildDetailedHumanoidChassis(yawGroup, pitchGroup, tier, mats);
+
+    if (isApex) {
+      const halo = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.045, 8, 24), accentMat);
+      halo.position.set(0, 1.85, -0.22);
+      yawGroup.add(halo);
+      tower.spinPart = halo;
+    }
+
+    if (spec.id === 'scout') {
+      // SCOUT: Detailed Tactical Pistol(s), Extended Mags, Suppressors & Laser Sight Beams
+      const guns = tier >= 3 ? [-0.32, 0.32] : [0.24];
+      guns.forEach(gx => {
+        const slide = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.58 + tier * 0.07), secondaryMat);
+        slide.position.set(gx, 0.06, 0.52);
+        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.24, 0.14), darkMetalMat);
+        grip.position.set(gx, -0.08, 0.32);
+        const laserModule = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.24), accentMat);
+        laserModule.position.set(gx, -0.02, 0.62);
+        pitchGroup.add(slide, grip, laserModule);
+
+        if (tier >= 2) {
+          const suppressor = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.38, 8), darkMetalMat);
+          suppressor.rotation.x = Math.PI / 2;
+          suppressor.position.set(gx, 0.06, 0.92);
+          pitchGroup.add(suppressor);
+        }
+        if (tier >= 1) {
+          const laserBeam = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.012, 0.012, 2.6, 6),
+            new THREE.MeshBasicMaterial({ color: isApex ? 0xffbe0b : 0x00ffaa, transparent: true, opacity: 0.55 })
+          );
+          laserBeam.rotation.x = Math.PI / 2;
+          laserBeam.position.set(gx, -0.02, 2.0);
+          pitchGroup.add(laserBeam);
+        }
+      });
+    } else if (spec.id === 'sniper') {
+      // SNIPER: Cliff Parapet Shield + Anti-Materiel Rifle / Orbital Coil Railgun with Bipod & Scope
+      const parapet = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.52, 0.22), secondaryMat);
+      parapet.position.set(0, 0.28, 0.72);
+      yawGroup.add(parapet);
+
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.95), secondaryMat);
+      receiver.position.set(0.20, 0.04, 0.45);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.20, 0.48), darkMetalMat);
+      stock.position.set(0.20, 0.0, -0.15);
+      const barrel = new THREE.Mesh(sharedGeos.barrel, darkMetalMat);
+      barrel.scale.set(1.1, 1.55 + tier * 0.18, 1.1);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0.20, 0.06, 1.35);
+
+      const muzzleBrake = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.28), accentMat);
+      muzzleBrake.position.set(0.20, 0.06, 2.15 + tier * 0.1);
+
+      const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.08, 0.58, 10), darkMetalMat);
+      scope.rotation.x = Math.PI / 2;
+      scope.position.set(0.20, 0.22, 0.52);
+      const scopeLens = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 10), accentMat);
+      scopeLens.rotation.x = Math.PI / 2;
+      scopeLens.position.set(0.20, 0.22, 0.82);
+
+      // Folding Bipod Legs
+      [-0.14, 0.14].forEach(bx => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.45, 6), darkMetalMat);
+        leg.position.set(0.20 + bx, -0.16, 1.05);
+        leg.rotation.z = bx > 0 ? -0.35 : 0.35;
+        pitchGroup.add(leg);
+      });
+
+      pitchGroup.add(receiver, stock, barrel, muzzleBrake, scope, scopeLens);
+
+      // T3-T4 Magnetic Accelerator Coils along barrel
+      if (tier >= 3) {
+        for (let c = 0; c < 4; c++) {
+          const coil = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.03, 6, 14), accentMat);
+          coil.position.set(0.20, 0.06, 1.05 + c * 0.26);
+          pitchGroup.add(coil);
+        }
+      }
+    } else if (spec.id === 'minigunner') {
+      // MINIGUNNER: Heavy Rotary Cannon, Motor Housing, Top Carry Handle, Ammo Chute & 6-Barrel Cluster
+      const rotorRoot = new THREE.Group();
+      const offsets = tier >= 3 ? [-0.34, 0.34] : [0.0];
+
+      offsets.forEach(ox => {
+        const motorBox = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.55), secondaryMat);
+        motorBox.position.set(ox, -0.16, 0.38);
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.14, 0.06), darkMetalMat);
+        handle.position.set(ox, 0.05, 0.48);
+        pitchGroup.add(motorBox, handle);
+
+        const cluster = new THREE.Group();
+        cluster.position.set(ox, -0.16, 0.68);
+        for (let b = 0; b < 6; b++) {
+          const a = (b / 6) * Math.PI * 2;
+          const brl = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.032, 0.032, 1.25 + tier * 0.08, 6),
+            tier === 4 ? accentMat : darkMetalMat
+          );
+          brl.rotation.x = Math.PI / 2;
+          brl.position.set(Math.cos(a) * 0.11, Math.sin(a) * 0.11, 0.45);
+          cluster.add(brl);
+        }
+        // Barrel Clamps
+        [0.25, 0.78].forEach(cz => {
+          const clamp = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.07, 12), accentMat);
+          clamp.rotation.x = Math.PI / 2;
+          clamp.position.z = cz;
+          cluster.add(clamp);
+        });
+        rotorRoot.add(cluster);
+      });
+      pitchGroup.add(rotorRoot);
+      tower.rotaryBarrels = rotorRoot;
+    } else if (spec.id === 'cryo') {
+      // CRYO-BLASTER: Pressurized Nitrogen Tanks on Back + Spiral Cryo-Coil Emitter Cannon
+      [-0.18, 0.18].forEach(tx => {
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.68, 10), glassMat);
+        tank.position.set(tx, 1.28, -0.38);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), accentMat);
+        cap.position.set(tx, 1.62, -0.38);
+        yawGroup.add(tank, cap);
+      });
+
+      const bodyChamber = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.75, 10), glassMat);
+      bodyChamber.rotation.x = Math.PI / 2;
+      bodyChamber.position.set(0.22, -0.04, 0.55);
+      const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 10), accentMat);
+      nozzle.rotation.x = Math.PI / 2;
+      nozzle.position.set(0.22, -0.04, 1.05);
+      pitchGroup.add(bodyChamber, nozzle);
+
+      for (let r = 0; r < 3; r++) {
+        const fin = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.03, 6, 12), secondaryMat);
+        fin.position.set(0.22, -0.04, 0.35 + r * 0.20);
+        pitchGroup.add(fin);
+      }
+    } else if (spec.id === 'accelerator') {
+      // VOID ACCELERATOR: Multi-Ring Plasma Projector + Dorsal Energy Wings
+      const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.30, 0.95), darkMetalMat);
+      chassis.position.set(0, -0.06, 0.52);
+      const coreTube = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.35, 10), accentMat);
+      coreTube.rotation.x = Math.PI / 2;
+      coreTube.position.set(0, -0.06, 0.78);
+      pitchGroup.add(chassis, coreTube);
+
+      for (let c = 0; c < 4; c++) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22 + c * 0.02, 0.035, 6, 16), accentMat);
+        ring.position.set(0, -0.06, 0.55 + c * 0.26);
+        pitchGroup.add(ring);
+      }
+
+      if (tier >= 2) {
+        // Floating Dorsal Energy Pylons / Wings
+        [-0.55, 0.55].forEach(wx => {
+          const wing = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, 0.28), accentMat);
+          wing.position.set(wx, 1.48, -0.38);
+          wing.rotation.z = wx > 0 ? -0.42 : 0.42;
+          yawGroup.add(wing);
+        });
+      }
+    } else if (spec.id === 'commander') {
+      // COMMANDER: Officer Peaked Cap, Tactical Holo-Console, Comms Banner & Command Sword/Sidearm
+      const capBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.30, 0.08, 12), secondaryMat);
+      capBrim.position.set(0, 1.94, 0.04);
+      yawGroup.add(capBrim);
+
+      if (tier >= 2) {
+        const holoStand = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.65, 8), darkMetalMat);
+        holoStand.position.set(0, 0.32, 0.58);
+        const holoScreen = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.05, 8), accentMat);
+        holoScreen.position.set(0, 0.68, 0.58);
+        yawGroup.add(holoStand, holoScreen);
+      }
+
+      const sword = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.95, 0.12), accentMat);
+      sword.position.set(-0.38, 0.35, 0.38);
+      sword.rotation.x = 0.35;
+      const pistol = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.52), secondaryMat);
+      pistol.position.set(0.36, 0.02, 0.45);
+      pitchGroup.add(sword, pistol);
+    }
+  }
+}
+
+function createEnemyMeshRig(spec) {
+  const root = new THREE.Group();
+  const s = spec.scale || 1.0;
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: spec.color,
+    roughness: 0.45,
+    metalness: spec.lead || spec.isBoss ? 0.85 : 0.35,
+    transparent: !!spec.hidden,
+    opacity: spec.hidden ? 0.48 : 1.0
+  });
+  const accentMat = new THREE.MeshStandardMaterial({
+    color: spec.accent,
+    emissive: spec.accent,
+    emissiveIntensity: spec.isBoss ? 1.6 : 1.0
+  });
+
+  const rigGroup = new THREE.Group();
+  rigGroup.scale.setScalar(s);
+  root.add(rigGroup);
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.95, 0.48), bodyMat);
+  torso.position.y = 0.95;
+  torso.castShadow = true;
+  rigGroup.add(torso);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.46), bodyMat);
+  head.position.y = 1.68;
+  rigGroup.add(head);
+
+  const eyeVisor = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.14, 0.15), accentMat);
+  eyeVisor.position.set(0, 1.68, 0.22);
+  rigGroup.add(eyeVisor);
+
+  const legGeo = new THREE.BoxGeometry(0.24, 0.55, 0.26);
+  const leftLeg = new THREE.Mesh(legGeo, bodyMat);
+  leftLeg.position.set(-0.2, 0.32, 0);
+  const rightLeg = new THREE.Mesh(legGeo, bodyMat);
+  rightLeg.position.set(0.2, 0.32, 0);
+  rigGroup.add(leftLeg, rightLeg);
+
+  const armGeo = new THREE.BoxGeometry(0.22, 0.72, 0.24);
+  const leftArm = new THREE.Mesh(armGeo, bodyMat);
+  leftArm.position.set(-0.52, 0.95, 0);
+  const rightArm = new THREE.Mesh(armGeo, bodyMat);
+  rightArm.position.set(0.52, 0.95, 0);
+  rigGroup.add(leftArm, rightArm);
+
+  // Boss & Special Unit silhouettes
+  let shieldSphere = null;
+  const armorPlates = [];
+  if (spec.shield) {
+    shieldSphere = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1.35, 1),
+      new THREE.MeshBasicMaterial({ color: 0x00f2ff, wireframe: true, transparent: true, opacity: 0.45 })
+    );
+    shieldSphere.position.y = 1.0;
+    rigGroup.add(shieldSphere);
+  }
+
+  if (spec.isBoss) {
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.08, 6, 12), accentMat);
+    crown.rotation.x = Math.PI / 2;
+    crown.position.y = 2.15;
+    rigGroup.add(crown);
+
+    const weapon = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.9, 0.35), accentMat);
+    weapon.position.set(0, -0.35, 0.45);
+    weapon.rotation.x = Math.PI * 0.35;
+    rightArm.add(weapon);
+
+    // Outer armor plates that shed during Wave 30 Boss Omega Enrage
+    const plateL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.75, 0.65), bodyMat);
+    plateL.position.set(-0.62, 1.25, 0);
+    const plateR = plateL.clone();
+    plateR.position.x = 0.62;
+    rigGroup.add(plateL, plateR);
+    armorPlates.push(plateL, plateR);
+  }
+
+  // Ice Cube encasement mesh (hidden until Deep Freeze triggers)
+  const iceCube = new THREE.Mesh(
+    new THREE.BoxGeometry(1.35, 2.1, 1.35),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.4, transparent: true, opacity: 0.62 })
+  );
+  iceCube.position.y = 1.05;
+  iceCube.visible = false;
+  rigGroup.add(iceCube);
+
+  return { root, rigGroup, leftLeg, rightLeg, leftArm, rightArm, shieldSphere, iceCube, armorPlates, accentMat };
+}
+
+/* ============================================================================
+   8. TOWER SYSTEM, AURA MANAGER & ACTIVE ABILITIES
+   ============================================================================ */
+const towers = [];
+const enemies = [];
+const projectiles = [];
+const alliedUnits = [];
+const groundHazards = [];
+const beamEffects = [];
+
+// Selection & Aura Ring visuals
+const rangeRingMesh = new THREE.Mesh(
+  new THREE.RingGeometry(0.97, 1.0, 64),
+  new THREE.MeshBasicMaterial({ color: 0x00f2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+);
+rangeRingMesh.rotation.x = -Math.PI / 2;
+rangeRingMesh.visible = false;
+scene.add(rangeRingMesh);
+
+const auraTetherGroup = new THREE.Group();
+scene.add(auraTetherGroup);
+
+function recalculateAllTowerAuras() {
+  towers.forEach(t => {
+    t.buffRate = 0;
+    t.buffRange = 0;
+    t.buffDmg = 0;
+    t.buffDiscount = 0;
+  });
+
+  towers.forEach(sup => {
+    const sTier = sup.spec.tiers[sup.tier];
+    const supRange = sTier.range;
+
+    if (sup.spec.id === 'commander') {
+      const rBuff = sup.activeSkillTimer > 0 ? (sTier.activeRate || sTier.rateBuff) : sTier.rateBuff;
+      towers.forEach(other => {
+        if (other === sup) return;
+        if (sup.pos.distanceTo(other.pos) <= supRange) {
+          other.buffRate = Math.max(other.buffRate, rBuff || 0);
+          other.buffRange = Math.max(other.buffRange, sTier.rangeBuff || 0);
+          other.buffDmg = Math.max(other.buffDmg, sTier.dmgBuff || 0);
+        }
+      });
+    } else if (sup.spec.id === 'dj') {
+      towers.forEach(other => {
+        if (other === sup) return;
+        if (sup.pos.distanceTo(other.pos) <= supRange) {
+          const track = sup.djTrack || 'purple';
+          const rBonus = track === 'purple' ? (sTier.rangeBuff || 0) * 1.25 : (sTier.rangeBuff || 0);
+          const dBonus = track === 'green' ? (sTier.discount || 0) * 1.25 : (sTier.discount || 0);
+          const dmgBonus = track === 'red' ? 0.20 : (sTier.dmgBuff || 0);
+          other.buffRange = Math.max(other.buffRange, rBonus);
+          other.buffDiscount = Math.max(other.buffDiscount, dBonus);
+          other.buffDmg = Math.max(other.buffDmg, dmgBonus);
+        }
+      });
+    }
+  });
+
+  updateGlobalCallToArmsButton();
+  if (state.selectedTower) renderInspector(state.selectedTower);
+}
+
+function getEffectiveTowerStats(tower) {
+  const tData = tower.spec.tiers[tower.tier];
+  const dmg = (tData.dmg || 0) * (1 + tower.buffDmg);
+  const cd = tData.cd > 0 ? tData.cd / (1 + tower.buffRate) : 0;
+  const range = (tData.range || 10) * (1 + tower.buffRange);
+  return { dmg, cd, range, tData };
+}
+
+function findBestTarget(tower, effRange, tData) {
+  let candidates = [];
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (e.dead) continue;
+    if (e.spec.hidden && !tData.hidden) continue;
+    const dx = e.pos.x - tower.pos.x;
+    const dz = e.pos.z - tower.pos.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist <= effRange) {
+      candidates.push({ e, dist });
+    }
+  }
+  if (candidates.length === 0) return null;
+
+  const mode = tower.targetMode;
+  if (mode === 'First') {
+    candidates.sort((a, b) => b.e.u - a.e.u);
+  } else if (mode === 'Last') {
+    candidates.sort((a, b) => a.e.u - b.e.u);
+  } else if (mode === 'Strongest') {
+    candidates.sort((a, b) => (b.e.hp + b.e.shield) - (a.e.hp + a.e.shield) || b.e.u - a.e.u);
+  } else if (mode === 'Weakest') {
+    candidates.sort((a, b) => (a.e.hp + a.e.shield) - (b.e.hp + b.e.shield) || b.e.u - a.e.u);
+  } else if (mode === 'Closest') {
+    candidates.sort((a, b) => a.dist - b.dist);
+  } else if (mode === 'Cluster') {
+    const splashR = tData.splash || 4.0;
+    candidates.forEach(c => {
+      let neighbors = 0;
+      for (let j = 0; j < enemies.length; j++) {
+        const o = enemies[j];
+        if (!o.dead && c.e.pos.distanceTo(o.pos) <= splashR) neighbors++;
+      }
+      c.neighbors = neighbors;
+    });
+    candidates.sort((a, b) => b.neighbors - a.neighbors || b.e.u - a.e.u);
+  }
+  return candidates[0].e;
+}
+
+function updateTowers(dt) {
+  for (let i = 0; i < towers.length; i++) {
+    const t = towers[i];
+    const { dmg, cd, range, tData } = getEffectiveTowerStats(t);
+
+    // Idle spin animations for reactors/radars/halos
+    if (t.spinPart) t.spinPart.rotation.y += dt * 2.4;
+
+    // DJ Booth equalizer bar bounce
+    if (t.spec.id === 'dj' && t.djBars.length > 0) {
+      for (let b = 0; b < t.djBars.length; b++) {
+        const audioVal = sound.freqData ? (sound.freqData[b * 2] / 255) : 0.4;
+        const h = 0.35 + audioVal * 1.1 + Math.sin(performance.now() * 0.01 + b) * 0.15;
+        t.djBars[b].scale.y = Math.max(0.2, h);
+      }
+    }
+
+    // Active skill & Stun timers
+    if (t.activeSkillTimer > 0) {
+      t.activeSkillTimer -= dt;
+      if (t.activeSkillTimer <= 0) recalculateAllTowerAuras();
+    }
+    if (t.activeSkillCooldown > 0) t.activeSkillCooldown = Math.max(0, t.activeSkillCooldown - dt);
+
+    if (t.stunTimer > 0) {
+      t.stunTimer -= dt;
+      t.stunRing.visible = true;
+      t.stunRing.rotation.y += dt * 6;
+      continue;
+    } else {
+      t.stunRing.visible = false;
+    }
+
+    // Weapon recoil recovery
+    if (t.pitchGroup) {
+      t.pitchGroup.position.z = THREE.MathUtils.lerp(t.pitchGroup.position.z, 0, dt * 12);
+    }
+
+    // 1. Quantum Farm mid-wave dividends (Tier 4)
+    if (t.spec.id === 'farm') {
+      if (state.waveActive && tData.midWaveCash) {
+        t.cooldown -= dt;
+        if (t.cooldown <= 0) {
+          t.cooldown = tData.cd;
+          grantCash(tData.midWaveCash);
+          t.totalDamage += tData.midWaveCash;
+          spawnFCT(t.pos.clone().add(new THREE.Vector3(0, 2.2, 0)), `+$${tData.midWaveCash}`, '#00ffaa', true);
+          emitParticles(t.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 10, 0x00ffaa, 3.5);
+        }
+      }
+      continue;
+    }
+
+    // 2. Mech Factory Vehicle Spawner
+    if (t.spec.id === 'mech') {
+      if (state.waveActive) {
+        t.cooldown -= dt;
+        if (t.cooldown <= 0) {
+          t.cooldown = tData.cd;
+          spawnAlliedVehicle(t, tData);
+        }
+      }
+      continue;
+    }
+
+    // 3. Cryo-Blaster T4 Absolute Zero Blizzard Aura
+    if (t.spec.id === 'cryo' && tData.blizzardAura) {
+      for (let eIdx = 0; eIdx < enemies.length; eIdx++) {
+        const e = enemies[eIdx];
+        if (!e.dead && e.pos.distanceTo(t.pos) <= range) {
+          e.slowFactor = Math.max(e.slowFactor, e.spec.isBoss ? 0.20 : 0.45);
+          e.slowTimer = Math.max(e.slowTimer, 0.5);
+        }
+      }
+    }
+
+    // 4. DJ Booth T3+ Bass Shockwave
+    if (t.spec.id === 'dj') {
+      if (state.waveActive && tData.bassWave) {
+        t.cooldown -= dt;
+        if (t.cooldown <= 0) {
+          t.cooldown = tData.cd;
+          spawnShockwaveRing(t.pos, range, 0xc084fc);
+          enemies.forEach(e => {
+            if (!e.dead && e.pos.distanceTo(t.pos) <= range) {
+              damageEnemy(e, dmg, t, true);
+              if (!e.spec.isBoss) e.u = Math.max(0, e.u - 0.012);
+            }
+          });
+        }
+      }
+      continue;
+    }
+
+    // Acquire target for offensive towers
+    const target = findBestTarget(t, range, tData);
+
+    if (target && t.yawGroup) {
+      const dx = target.pos.x - t.pos.x;
+      const dz = target.pos.z - t.pos.z;
+      const desiredYaw = Math.atan2(dx, dz);
+      t.yawGroup.rotation.y = lerpAngle(t.yawGroup.rotation.y, desiredYaw, dt * 15);
+    }
+
+    // 5. Void Accelerator Continuous Beam State Machine
+    if (t.spec.id === 'accelerator') {
+      updateAcceleratorTower(t, target, dmg, cd, range, tData, dt);
+      continue;
+    }
+
+    // 6. Minigunner Spin-Up Mechanic
+    if (t.spec.id === 'minigunner') {
+      if (target) {
+        t.spinProgress = Math.min(tData.spinUp, (t.spinProgress || 0) + dt);
+        if (t.rotaryBarrels) t.rotaryBarrels.rotation.z += dt * 28;
+        if (t.spinProgress < tData.spinUp) continue;
+      } else {
+        t.spinProgress = Math.max(0, (t.spinProgress || 0) - dt * 1.5);
+        if (t.rotaryBarrels && t.spinProgress > 0) t.rotaryBarrels.rotation.z += dt * 10;
+        continue;
+      }
+    }
+
+    // Standard Cooldown & Fire Execution
+    t.cooldown -= dt;
+    if (target && t.cooldown <= 0 && dmg > 0) {
+      t.cooldown = cd;
+      executeTowerFire(t, target, dmg, tData);
+    }
+  }
+}
+
+function updateAcceleratorTower(t, target, dmg, cd, range, tData, dt) {
+  if (t.beamState === 'recharge') {
+    t.beamMesh.visible = false;
+    t.beamStateTimer -= dt;
+    if (t.beamStateTimer <= 0) t.beamState = 'idle';
+    return;
+  }
+
+  if (!target) {
+    t.beamMesh.visible = false;
+    if (t.beamState === 'beaming') {
+      t.beamState = 'recharge';
+      t.beamStateTimer = tData.rechargeTime;
+    } else {
+      t.beamState = 'idle';
+    }
+    return;
+  }
+
+  if (t.beamState === 'idle') {
+    t.beamState = 'charging';
+    t.beamStateTimer = tData.chargeTime;
+    sound.play('beamCharge');
+    return;
+  }
+
+  if (t.beamState === 'charging') {
+    t.beamStateTimer -= dt;
+    if (t.beamStateTimer <= 0) {
+      t.beamState = 'beaming';
+      t.beamStateTimer = tData.beamDur;
+      t.beamTickTimer = 0;
+      t.beamFocusMult = 1.0;
+    }
+    return;
+  }
+
+  if (t.beamState === 'beaming') {
+    t.beamStateTimer -= dt;
+    t.beamTickTimer -= dt;
+
+    // Position continuous plasma beam from muzzle to target chest
+    const startPos = t.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
+    const endPos = target.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
+    const dist = startPos.distanceTo(endPos);
+
+    t.beamMesh.visible = true;
+    t.beamMesh.position.copy(startPos).lerp(endPos, 0.5);
+    t.beamMesh.scale.set(1 + 0.25 * Math.sin(performance.now() * 0.06), dist, 1 + 0.25 * Math.sin(performance.now() * 0.06));
+    t.beamMesh.lookAt(endPos);
+    t.beamMesh.rotateX(Math.PI / 2);
+    t.beamMesh.material.color.setHex(tData.beamColor);
+
+    if (t.beamTickTimer <= 0) {
+      t.beamTickTimer = 0.10;
+      if (tData.ramp) t.beamFocusMult = Math.min(1.6, (t.beamFocusMult || 1.0) + 0.04);
+      damageEnemy(target, dmg * (t.beamFocusMult || 1.0), t, true);
+      emitParticles(endPos, 3, tData.beamColor, 3.0);
+      sound.play('beamTick');
+    }
+
+    if (t.beamStateTimer <= 0) {
+      t.beamMesh.visible = false;
+      t.beamState = 'recharge';
+      t.beamStateTimer = tData.rechargeTime;
+    }
+  }
+}
+
+function executeTowerFire(t, target, dmg, tData) {
+  if (t.pitchGroup) t.pitchGroup.position.z = -0.18;
+  const muzzlePos = t.pos.clone().add(new THREE.Vector3(0, 1.4, 0));
+
+  if (t.spec.id === 'mortar') {
+    sound.play('mortarLaunch');
+    emitParticles(muzzlePos, 8, 0xffaa00, 4.0);
+    // Ballistic lead prediction along road spline
+    const flightTime = 0.85;
+    const predU = Math.min(1.0, target.u + (target.currentSpeed * flightTime) / TOTAL_ROAD_LENGTH);
+    const predPos = roadCurve.getPointAt(predU);
+    projectiles.push({
+      startPos: muzzlePos,
+      endPos: predPos,
+      elapsed: 0,
+      duration: flightTime,
+      arcHeight: 8.5,
+      dmg,
+      tData,
+      tower: t,
+      mesh: createArtilleryShellMesh()
+    });
+    return;
+  }
+
+  // Hitscan weapons (Scout, Sniper, Minigunner, Cryo, Commander)
+  let finalDmg = dmg;
+  let isCrit = false;
+  if (tData.crit && Math.random() < tData.crit) {
+    finalDmg *= 2.0;
+    isCrit = true;
+  }
+
+  if (t.spec.id === 'scout') {
+    sound.play('scout');
+    emitParticles(muzzlePos, 4, 0xffd166, 3.2, true);
+    spawnBeamTrail(muzzlePos, target.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), t.tier === 4 ? 0xffbe0b : 0xffe066, 0.08);
+    damageEnemy(target, finalDmg, t, tData.lead, isCrit);
+  } else if (t.spec.id === 'sniper') {
+    sound.play(t.tier === 4 ? 'railgun' : 'sniper');
+    emitParticles(muzzlePos, 8, 0x00f2ff, 4.5, true);
+    const hitPos = target.pos.clone().add(new THREE.Vector3(0, 1.2, 0));
+    spawnBeamTrail(muzzlePos, hitPos, t.tier === 4 ? 0x00f2ff : 0xffaa00, 0.35);
+    if (tData.shred) target.armorShred = Math.max(target.armorShred || 0, tData.shred);
+    damageEnemy(target, finalDmg, t, true, true);
+    if (tData.splash) {
+      spawnShockwaveRing(target.pos, tData.splash, 0x00f2ff);
+      enemies.forEach(o => {
+        if (o !== target && !o.dead && o.pos.distanceTo(target.pos) <= tData.splash) {
+          damageEnemy(o, tData.splashDmg || 100, t, true);
+        }
+      });
+    }
+  } else if (t.spec.id === 'minigunner') {
+    sound.play('minigun');
+    emitParticles(muzzlePos, 3, tData.plasma ? 0xd946ef : 0xffaa00, 3.8, !tData.plasma);
+    spawnBeamTrail(muzzlePos, target.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), tData.plasma ? 0xd946ef : 0xffdd55, 0.05);
+    damageEnemy(target, finalDmg, t, tData.lead);
+  } else if (t.spec.id === 'cryo') {
+    sound.play('cryo');
+    emitParticles(target.pos.clone().add(new THREE.Vector3(0, 1, 0)), 8, 0x38bdf8, 3.0);
+    spawnBeamTrail(muzzlePos, target.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 0x38bdf8, 0.14);
+    enemies.forEach(o => {
+      if (!o.dead && o.pos.distanceTo(target.pos) <= (tData.splash || 2.0)) {
+        damageEnemy(o, finalDmg, t, tData.lead);
+        if (!o.spec.freezeImmune) {
+          o.slowFactor = Math.max(o.slowFactor, tData.slow * (1 - (o.spec.slowResist || 0)));
+          o.slowTimer = Math.max(o.slowTimer, tData.slowDur);
+          if (tData.brittle) o.brittle = Math.max(o.brittle, tData.brittle);
+          if (tData.freezeEvery && !o.spec.isBoss) {
+            o.cryoHits = (o.cryoHits || 0) + 1;
+            if (o.cryoHits >= tData.freezeEvery) {
+              o.cryoHits = 0;
+              o.freezeTimer = 1.25;
+            }
+          }
+        }
+      }
+    });
+  } else if (t.spec.id === 'commander') {
+    sound.play('scout');
+    spawnBeamTrail(muzzlePos, target.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 0xfacc15, 0.09);
+    damageEnemy(target, finalDmg, t, tData.lead);
+  }
+}
+
+/* ============================================================================
+   9. ENEMY, PATHING & MULTI-PHASE BOSS AI SYSTEM
+   ============================================================================ */
+function spawnEnemy(typeId, startU = 0.0, hpMultOverride = 1.0) {
+  const spec = ENEMY_SPECS[typeId];
+  if (!spec) return;
+
+  const diff = DIFFICULTY_PRESETS[state.difficulty];
+  const scaledHp = Math.round(spec.hp * diff.hpMult * hpMultOverride);
+  const scaledShield = spec.shield ? Math.round(spec.shield * diff.hpMult * hpMultOverride) : 0;
+
+  const rig = createEnemyMeshRig(spec);
+  const laneOffset = spec.isBoss ? 0 : (Math.random() - 0.5) * 1.7;
+  const pt = roadCurve.getPointAt(startU);
+  rig.root.position.copy(pt);
+  scene.add(rig.root);
+
+  const enemy = {
+    spec,
+    u: startU,
+    laneOffset,
+    hp: scaledHp,
+    maxHp: scaledHp,
+    shield: scaledShield,
+    maxShield: scaledShield,
+    currentSpeed: spec.speed,
+    pos: pt.clone(),
+    rig,
+    dead: false,
+    slowFactor: 0,
+    slowTimer: 0,
+    freezeTimer: 0,
+    burnDps: 0,
+    burnTimer: 0,
+    brittle: 0,
+    armorShred: 0,
+    skillTimer: 7.0,
+    phaseTriggered50: false,
+    phaseTriggered66: false,
+    phaseTriggered33: false,
+    phaseTriggered25: false
+  };
+
+  enemies.push(enemy);
+
+  if (spec.isBoss) {
+    sound.play('bossSiren');
+    sound.musicState = 'boss';
+    state.cameraTrauma = 0.65;
+    showCommsToast(`⚠ BOSS ALERT: ${spec.name} (${scaledHp.toLocaleString()} HP) HAS ENTERED THE SECTOR!`, 'danger');
+  }
+}
+
+function damageEnemy(enemy, rawAmount, sourceTower, hasLeadPen = false, isCrit = false) {
+  if (enemy.dead) return;
+
+  // Check Lead Immunity
+  if (enemy.spec.lead && !hasLeadPen) {
+    if (Math.random() < 0.35) spawnFCT(enemy.pos.clone().add(new THREE.Vector3(0, 1.8, 0)), 'IMMUNE (LEAD)', '#f43f5e');
+    return;
+  }
+
+  let amount = rawAmount;
+  if (enemy.spec.armor) {
+    const effArmor = Math.max(0, enemy.spec.armor - (enemy.armorShred || 0));
+    amount *= (1 - effArmor);
+  }
+  if (enemy.brittle > 0) {
+    amount *= (1 + enemy.brittle);
+  }
+
+  amount = Math.max(1, Math.round(amount));
+  if (sourceTower) sourceTower.totalDamage += amount;
+  state.totalDamageDealt += amount;
+
+  // Shield absorption first
+  if (enemy.shield > 0) {
+    const sDmg = Math.min(enemy.shield, amount);
+    enemy.shield -= sDmg;
+    amount -= sDmg;
+    if (enemy.shield <= 0 && enemy.rig.shieldSphere) {
+      enemy.rig.shieldSphere.visible = false;
+      emitParticles(enemy.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 14, 0x00f2ff, 4.5);
+    }
+  }
+
+  enemy.hp -= amount;
+
+  if (Math.random() < 0.45 || isCrit || amount >= 40) {
+    spawnFCT(
+      enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 1.8 + (enemy.spec.scale || 1) * 0.5, 0)),
+      isCrit ? `${amount}!` : `${amount}`,
+      isCrit ? '#ffbe0b' : '#f8fafc',
+      isCrit
+    );
+  }
+
+  if (enemy.hp <= 0) {
+    enemy.dead = true;
+    state.totalKills++;
+    const diff = DIFFICULTY_PRESETS[state.difficulty];
+    const cashGain = Math.round(enemy.spec.reward * diff.rewardMult);
+    grantCash(cashGain);
+    emitParticles(enemy.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), enemy.spec.isBoss ? 45 : 12, enemy.spec.accent, enemy.spec.isBoss ? 7.0 : 3.8);
+    scene.remove(enemy.rig.root);
+
+    if (enemy.spec.isBoss) {
+      sound.play('explosion');
+      state.cameraTrauma = 0.85;
+      sound.musicState = 'combat';
+    }
+  }
+}
+
+function updateEnemies(dt) {
+  let activeBoss = null;
+
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (e.dead) {
+      enemies.splice(i, 1);
+      continue;
+    }
+    if (e.spec.isBoss) activeBoss = e;
+
+    // Burn DoT ticks
+    if (e.burnTimer > 0) {
+      e.burnTimer -= dt;
+      e.burnAccum = (e.burnAccum || 0) + dt;
+      if (e.burnAccum >= 0.5) {
+        e.burnAccum = 0;
+        damageEnemy(e, e.burnDps * 0.5, null, true);
+      }
+    }
+
+    // Freeze / Slow status
+    if (e.slowTimer > 0) {
+      e.slowTimer -= dt;
+      if (e.slowTimer <= 0) e.slowFactor = 0;
+    }
+
+    if (e.freezeTimer > 0) {
+      e.freezeTimer -= dt;
+      e.rig.iceCube.visible = true;
+      continue;
+    } else {
+      e.rig.iceCube.visible = false;
+    }
+
+    // Calculate effective speed
+    let spd = e.spec.speed * (1 - e.slowFactor);
+    if (e.spec.rage && e.hp < e.maxHp * 0.5) spd *= 1.4;
+    if (e.enraged) spd *= 1.45;
+    e.currentSpeed = spd;
+
+    // Advance along Arc-Length Parameterized Spline
+    e.u += (spd * dt) / TOTAL_ROAD_LENGTH;
+
+    if (e.u >= 1.0) {
+      // Reached Aegis Core Base!
+      const baseDmg = e.spec.isBoss ? 100 : Math.max(1, Math.min(25, Math.ceil(e.hp / 25)));
+      damageAegisCore(baseDmg);
+      scene.remove(e.rig.root);
+      enemies.splice(i, 1);
+      continue;
+    }
+
+    const pt = roadCurve.getPointAt(e.u);
+    const tan = roadCurve.getTangentAt(e.u).normalize();
+    const norm = new THREE.Vector3(-tan.z, 0, tan.x);
+    e.pos.copy(pt).addScaledVector(norm, e.laneOffset);
+    e.pos.y = e.spec.flying ? 2.6 + Math.sin(performance.now() * 0.006 + i) * 0.25 : 0;
+
+    e.rig.root.position.copy(e.pos);
+    e.rig.root.rotation.y = Math.atan2(tan.x, tan.z);
+
+    // Limb walking animation
+    const walkPhase = performance.now() * 0.004 * spd + i;
+    const swing = Math.sin(walkPhase) * 0.55;
+    e.rig.leftLeg.rotation.x = swing;
+    e.rig.rightLeg.rotation.x = -swing;
+    e.rig.leftArm.rotation.x = -swing * 0.7;
+    e.rig.rightArm.rotation.x = swing * 0.7;
+
+    // Special Enemy & Boss Abilities
+    updateEnemyAndBossSkills(e, dt);
+  }
+
+  updateBossHud(activeBoss);
+}
+
+function updateEnemyAndBossSkills(e, dt) {
+  e.skillTimer -= dt;
+  const hpRatio = e.hp / e.maxHp;
+
+  // Nano-Medic Drone healing wave
+  if (e.spec.healer && e.skillTimer <= 0) {
+    e.skillTimer = 3.2;
+    spawnShockwaveRing(e.pos, 5.5, 0x10b981);
+    enemies.forEach(o => {
+      if (!o.dead && o.pos.distanceTo(e.pos) <= 5.5) {
+        o.hp = Math.min(o.maxHp, o.hp + Math.round(o.maxHp * 0.12));
+      }
+    });
+  }
+
+  // Void Necromancer skeleton summon
+  if (e.spec.summoner && e.skillTimer <= 0) {
+    e.skillTimer = 7.5;
+    spawnShockwaveRing(e.pos, 3.5, 0xd946ef);
+    for (let s = 0; s < 3; s++) {
+      spawnEnemy('thrall', Math.min(0.96, e.u + 0.015 + s * 0.008));
+    }
+  }
+
+  // Fallen Guardian Mini-Boss Spear Stomp
+  if (e.spec.miniBoss && e.skillTimer <= 0) {
+    e.skillTimer = 8.5;
+    stunClosestTowers(e.pos, 9.5, 2, 3.0);
+  }
+
+  // BOSS 1: GRAVEDIGGER TITAN
+  if (e.spec.id === 'boss1') {
+    if (e.skillTimer <= 0) {
+      e.skillTimer = 9.0;
+      e.lastSkillText = 'SEISMIC SLAM (TOWER STUN!)';
+      state.cameraTrauma = 0.55;
+      stunClosestTowers(e.pos, 11.0, 5, 3.0);
+    }
+    if (!e.phaseTriggered50 && hpRatio <= 0.5) {
+      e.phaseTriggered50 = true;
+      e.lastSkillText = 'EARTH SUMMON (IRON BRUTES + LEAD!)';
+      for (let k = 0; k < 4; k++) spawnEnemy('brute', Math.max(0, e.u - 0.02 * k));
+      for (let k = 0; k < 2; k++) spawnEnemy('lead', Math.min(0.95, e.u + 0.02 * (k + 1)));
+    }
+  }
+
+  // BOSS 2: MOLTEN WARLORD
+  if (e.spec.id === 'boss2') {
+    if (e.skillTimer <= 0) {
+      e.skillTimer = 10.0;
+      e.lastSkillText = 'MAGMA METEOR BARRAGE!';
+      state.cameraTrauma = 0.65;
+      const sorted = [...towers].sort((a, b) => b.totalDamage - a.totalDamage).slice(0, 3);
+      sorted.forEach(t => {
+        t.stunTimer = 4.2;
+        spawnShockwaveRing(t.pos, 3.0, 0xff3b00);
+        spawnFCT(t.pos.clone().add(new THREE.Vector3(0, 2.5, 0)), 'METEOR STUN!', '#ffbe0b', true);
+      });
+    }
+    if (!e.phaseTriggered50 && hpRatio <= 0.5) {
+      e.phaseTriggered50 = true;
+      e.shield = 6000;
+      e.maxShield = 6000;
+      e.enraged = true;
+      e.lastSkillText = 'THERMAL OVERLOAD (+6,000 SHIELD & SPEED!)';
+    }
+  }
+
+  // BOSS 3: THE VOID OVERLORD
+  if (e.spec.id === 'boss3') {
+    if (e.skillTimer <= 0) {
+      e.skillTimer = 8.0;
+      e.lastSkillText = 'ABYSSAL CLEAVE & RIFT SUMMON!';
+      state.cameraTrauma = 0.75;
+      stunClosestTowers(e.pos, 15.0, 5, 3.8);
+      spawnEnemy('knight', Math.min(0.95, e.u + 0.02));
+      spawnEnemy('reaver', Math.max(0.01, e.u - 0.02));
+    }
+    if (!e.phaseTriggered25 && hpRatio <= 0.25) {
+      e.phaseTriggered25 = true;
+      e.enraged = true;
+      e.lastSkillText = 'OMEGA PROTOCOL ENGAGED (ARMOR SHED + HYPER SPEED!)';
+      e.rig.armorPlates.forEach(p => { p.visible = false; });
+      e.rig.accentMat.color.setHex(0xff0055);
+      state.cameraTrauma = 1.0;
+      showCommsToast('CRITICAL: THE VOID OVERLORD HAS ENTERED OMEGA ENRAGE!', 'danger');
+    }
+  }
+}
+
+function stunClosestTowers(origin, radius, maxCount, duration) {
+  sound.play('explosion');
+  spawnShockwaveRing(origin, radius, 0xffaa00);
+  const inRange = towers
+    .filter(t => t.pos.distanceTo(origin) <= radius && t.spec.id !== 'farm')
+    .sort((a, b) => a.pos.distanceTo(origin) - b.pos.distanceTo(origin))
+    .slice(0, maxCount);
+
+  inRange.forEach(t => {
+    t.stunTimer = duration;
+    spawnFCT(t.pos.clone().add(new THREE.Vector3(0, 2.5, 0)), 'STUNNED!', '#facc15', true);
+  });
+}
+
+/* ============================================================================
+   10. PROJECTILE, BEAM & ALLIED VEHICLE ENGINE
+   ============================================================================ */
+function createArtilleryShellMesh() {
+  const m = new THREE.Mesh(
+    new THREE.ConeGeometry(0.22, 0.75, 8),
+    new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0xff5500, emissiveIntensity: 1.0 })
+  );
+  scene.add(m);
+  return m;
+}
+
+function spawnBeamTrail(start, end, colorHex, duration = 0.15) {
+  const dist = start.distanceTo(end);
+  const geo = new THREE.CylinderGeometry(0.045, 0.045, dist, 6);
+  const mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.9 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(start).lerp(end, 0.5);
+  mesh.lookAt(end);
+  mesh.rotateX(Math.PI / 2);
+  scene.add(mesh);
+  beamEffects.push({ mesh, life: duration, maxLife: duration });
+}
+
+function spawnShockwaveRing(center, maxRadius, colorHex) {
+  const geo = new THREE.RingGeometry(0.75, 1.0, 32);
+  const mat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(center.x, center.y + 0.15, center.z);
+  scene.add(mesh);
+  beamEffects.push({ mesh, life: 0.45, maxLife: 0.45, maxRadius });
+}
+
+function spawnAlliedVehicle(factoryTower, tData) {
+  const group = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.4, metalness: 0.7 });
+  const glowMat = new THREE.MeshStandardMaterial({ color: 0x00f2ff, emissive: 0x00f2ff, emissiveIntensity: 1.1 });
+
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.65, 1.75), hullMat);
+  hull.position.y = 0.45;
+  group.add(hull);
+
+  if (tData.unitDmg > 0) {
+    const turret = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.4, 0.8), glowMat);
+    turret.position.y = 0.95;
+    group.add(turret);
+  }
+
+  const startPt = roadCurve.getPointAt(0.99);
+  group.position.copy(startPt);
+  scene.add(group);
+
+  alliedUnits.push({
+    u: 0.99,
+    hp: tData.unitHp,
+    maxHp: tData.unitHp,
+    speed: tData.unitSpeed,
+    dmg: tData.unitDmg,
+    cd: tData.unitCd,
+    fireTimer: 0.5,
+    splash: tData.unitSplash || 0,
+    deathExplosion: tData.deathExplosion || 0,
+    tower: factoryTower,
+    mesh: group
+  });
+}
+
+function updateProjectilesAndVehicles(dt) {
+  // 1. Parabolic Mortar Shells
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.elapsed += dt;
+    const tau = Math.min(1.0, p.elapsed / p.duration);
+
+    const x = THREE.MathUtils.lerp(p.startPos.x, p.endPos.x, tau);
+    const z = THREE.MathUtils.lerp(p.startPos.z, p.endPos.z, tau);
+    const y = (1 - tau) * p.startPos.y + tau * p.endPos.y + 4 * p.arcHeight * tau * (1 - tau);
+    p.mesh.position.set(x, y, z);
+
+    // Analytical derivative alignment so shell noses up on launch and down on impact
+    const vx = (p.endPos.x - p.startPos.x) / p.duration;
+    const vz = (p.endPos.z - p.startPos.z) / p.duration;
+    const vy = ((p.endPos.y - p.startPos.y) + 4 * p.arcHeight * (1 - 2 * tau)) / p.duration;
+    const lookTarget = new THREE.Vector3(x + vx, y + vy, z + vz);
+    p.mesh.lookAt(lookTarget);
+    p.mesh.rotateX(Math.PI / 2);
+
+    if (tau >= 1.0) {
+      sound.play('explosion');
+      state.cameraTrauma = Math.max(state.cameraTrauma, p.tData.stun ? 0.5 : 0.22);
+      emitParticles(p.endPos, 28, 0xff6b00, 6.5);
+      spawnShockwaveRing(p.endPos, p.tData.splash, 0xff5500);
+
+      enemies.forEach(e => {
+        if (!e.dead && e.pos.distanceTo(p.endPos) <= p.tData.splash) {
+          damageEnemy(e, p.dmg, p.tower, true);
+          if (p.tData.burnDps) {
+            e.burnDps = Math.max(e.burnDps, p.tData.burnDps);
+            e.burnTimer = p.tData.burnDur;
+          }
+          if (p.tData.stun && !e.spec.stunImmune) {
+            e.freezeTimer = Math.max(e.freezeTimer, p.tData.stun);
+          }
+        }
+      });
+
+      scene.remove(p.mesh);
+      projectiles.splice(i, 1);
+    }
+  }
+
+  // 2. Beam & Shockwave Fades
+  for (let i = beamEffects.length - 1; i >= 0; i--) {
+    const b = beamEffects[i];
+    b.life -= dt;
+    if (b.life <= 0) {
+      scene.remove(b.mesh);
+      beamEffects.splice(i, 1);
+      continue;
+    }
+    const progress = 1 - b.life / b.maxLife;
+    b.mesh.material.opacity = 1 - progress;
+    if (b.maxRadius) {
+      const s = 0.5 + progress * b.maxRadius;
+      b.mesh.scale.set(s, s, 1);
+    }
+  }
+
+  // 3. Allied Vehicles driving backward from u = 1.0 -> u = 0.0
+  for (let i = alliedUnits.length - 1; i >= 0; i--) {
+    const u = alliedUnits[i];
+    u.u -= (u.speed * dt) / TOTAL_ROAD_LENGTH;
+    if (u.u <= 0 || u.hp <= 0) {
+      scene.remove(u.mesh);
+      alliedUnits.splice(i, 1);
+      continue;
+    }
+
+    const pt = roadCurve.getPointAt(u.u);
+    const tan = roadCurve.getTangentAt(u.u).normalize();
+    u.mesh.position.copy(pt);
+    u.mesh.rotation.y = Math.atan2(-tan.x, -tan.z);
+
+    // Mounted turret fire
+    if (u.dmg > 0) {
+      u.fireTimer -= dt;
+      if (u.fireTimer <= 0) {
+        const target = enemies.find(e => !e.dead && e.pos.distanceTo(pt) <= 14.0);
+        if (target) {
+          u.fireTimer = u.cd;
+          spawnBeamTrail(pt.clone().add(new THREE.Vector3(0, 1, 0)), target.pos.clone().add(new THREE.Vector3(0, 1, 0)), 0x00f2ff, 0.1);
+          damageEnemy(target, u.dmg, u.tower, true);
+        }
+      }
+    }
+
+    // Ramming collision check
+    for (let j = 0; j < enemies.length; j++) {
+      const e = enemies[j];
+      if (!e.dead && !e.spec.flying && e.pos.distanceTo(pt) <= 1.8) {
+        const ramDmg = Math.min(u.hp, e.hp + e.shield);
+        damageEnemy(e, ramDmg, u.tower, true, true);
+        u.hp -= ramDmg;
+        emitParticles(pt, 12, 0x38bdf8, 4.5);
+        if (u.hp <= 0) {
+          if (u.deathExplosion > 0) {
+            spawnShockwaveRing(pt, 6.0, 0x00f2ff);
+            enemies.forEach(o => {
+              if (!o.dead && o.pos.distanceTo(pt) <= 6.0) damageEnemy(o, u.deathExplosion, u.tower, true);
+            });
+          }
+          break;
+        }
+      }
+    }
+  }
+}
+
+/* ============================================================================
+   11. PARTICLE, DECAL & FLOATING COMBAT TEXT (FCT) ENGINE
+   ============================================================================ */
+const MAX_PARTICLES = 1600;
+const partGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+const partMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const particleInstanced = new THREE.InstancedMesh(partGeo, partMat, MAX_PARTICLES);
+particleInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(particleInstanced);
+
+const particles = [];
+const dummyObj = new THREE.Object3D();
+const dummyColor = new THREE.Color();
+
+for (let i = 0; i < MAX_PARTICLES; i++) {
+  particles.push({
+    active: false,
+    pos: new THREE.Vector3(),
+    vel: new THREE.Vector3(),
+    life: 0,
+    maxLife: 1,
+    scale: 1,
+    bounce: false
+  });
+  dummyObj.scale.setScalar(0);
+  dummyObj.updateMatrix();
+  particleInstanced.setMatrixAt(i, dummyObj.matrix);
+}
+
+let partCursor = 0;
+function emitParticles(origin, count, colorHex, speed = 4.0, bounceFloor = false) {
+  dummyColor.setHex(colorHex);
+  for (let c = 0; c < count; c++) {
+    const p = particles[partCursor];
+    p.active = true;
+    p.pos.copy(origin);
+    p.vel.set(
+      (Math.random() - 0.5) * speed * 2,
+      Math.random() * speed * 1.3 + 1.0,
+      (Math.random() - 0.5) * speed * 2
+    );
+    p.life = 0.35 + Math.random() * 0.35;
+    p.maxLife = p.life;
+    p.scale = 0.8 + Math.random() * 0.9;
+    p.bounce = bounceFloor;
+    particleInstanced.setColorAt(partCursor, dummyColor);
+    partCursor = (partCursor + 1) % MAX_PARTICLES;
+  }
+  if (particleInstanced.instanceColor) particleInstanced.instanceColor.needsUpdate = true;
+}
+
+function updateParticles(dt) {
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    const p = particles[i];
+    if (!p.active) continue;
+    p.life -= dt;
+    if (p.life <= 0) {
+      p.active = false;
+      dummyObj.scale.setScalar(0);
+      dummyObj.updateMatrix();
+      particleInstanced.setMatrixAt(i, dummyObj.matrix);
+      continue;
+    }
+    p.vel.y -= 12.0 * dt;
+    p.pos.addScaledVector(p.vel, dt);
+    if (p.bounce && p.pos.y < 0.08) {
+      p.pos.y = 0.08;
+      p.vel.y *= -0.45;
+    }
+    dummyObj.position.copy(p.pos);
+    dummyObj.scale.setScalar(p.scale * (p.life / p.maxLife));
+    dummyObj.rotation.x += dt * 5;
+    dummyObj.rotation.y += dt * 5;
+    dummyObj.updateMatrix();
+    particleInstanced.setMatrixAt(i, dummyObj.matrix);
+  }
+  particleInstanced.instanceMatrix.needsUpdate = true;
+}
+
+// 2D Floating Combat Text & World Enemy Health Bars
+const fctCanvas = document.getElementById('fct-canvas');
+const fctCtx = fctCanvas.getContext('2d');
+const fctItems = [];
+
+function spawnFCT(worldPos, text, color = '#ffffff', big = false) {
+  if (fctItems.length > 90) fctItems.shift();
+  fctItems.push({
+    pos: worldPos.clone(),
+    vy: big ? 2.4 : 1.6,
+    text,
+    color,
+    big,
+    life: 0.95,
+    maxLife: 0.95
+  });
+}
+
+function render2DOverlay(dt) {
+  if (fctCanvas.width !== window.innerWidth || fctCanvas.height !== window.innerHeight) {
+    fctCanvas.width = window.innerWidth;
+    fctCanvas.height = window.innerHeight;
+  }
+  fctCtx.clearRect(0, 0, fctCanvas.width, fctCanvas.height);
+
+  // 1. Enemy overhead health bars & status badges
+  const projVec = new THREE.Vector3();
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (e.dead || e.spec.isBoss) continue;
+    if (e.hp === e.maxHp && e.shield === e.maxShield && !e.spec.hidden && !e.spec.lead) continue;
+
+    projVec.copy(e.pos);
+    projVec.y += 2.15 * (e.spec.scale || 1);
+    projVec.project(camera);
+    if (projVec.z > 1) continue;
+
+    const sx = (projVec.x * 0.5 + 0.5) * fctCanvas.width;
+    const sy = (-projVec.y * 0.5 + 0.5) * fctCanvas.height;
+    const w = 38;
+    const h = 5;
+
+    fctCtx.fillStyle = 'rgba(8, 12, 20, 0.85)';
+    fctCtx.fillRect(sx - w / 2 - 1, sy - 1, w + 2, h + 2);
+
+    const hpPct = Math.max(0, e.hp / e.maxHp);
+    fctCtx.fillStyle = hpPct > 0.5 ? '#10b981' : (hpPct > 0.25 ? '#f59e0b' : '#f43f5e');
+    fctCtx.fillRect(sx - w / 2, sy, w * hpPct, h);
+
+    if (e.shield > 0) {
+      const shPct = Math.max(0, e.shield / e.maxShield);
+      fctCtx.fillStyle = '#00f2ff';
+      fctCtx.fillRect(sx - w / 2, sy - 4, w * shPct, 3);
+    }
+  }
+
+  // 2. Floating Combat Text numbers
+  fctCtx.textAlign = 'center';
+  for (let i = fctItems.length - 1; i >= 0; i--) {
+    const f = fctItems[i];
+    f.life -= dt;
+    if (f.life <= 0) {
+      fctItems.splice(i, 1);
+      continue;
+    }
+    f.pos.y += f.vy * dt;
+    projVec.copy(f.pos).project(camera);
+    if (projVec.z > 1) continue;
+
+    const sx = (projVec.x * 0.5 + 0.5) * fctCanvas.width;
+    const sy = (-projVec.y * 0.5 + 0.5) * fctCanvas.height;
+    fctCtx.globalAlpha = Math.min(1, (f.life / f.maxLife) * 1.4);
+    fctCtx.font = f.big ? '800 15px "JetBrains Mono", monospace' : '700 11px "JetBrains Mono", monospace';
+    fctCtx.fillStyle = '#000000';
+    fctCtx.fillText(f.text, sx + 1, sy + 1);
+    fctCtx.fillStyle = f.color;
+    fctCtx.fillText(f.text, sx, sy);
+  }
+  fctCtx.globalAlpha = 1.0;
+}
+
+/* ============================================================================
+   12. WAVE DIRECTOR & ECONOMY CONTROLLER
+   ============================================================================ */
+let activeSpawnEvents = [];
+
+function startNextWave() {
+  if (state.gameOver) return;
+
+  // Pay out completed wave bonus & Quantum Farms if advancing from an active wave
+  if (state.wave > 0) {
+    payEndOfWaveRewards();
+  }
+
+  state.wave++;
+  state.waveActive = true;
+  state.waveElapsed = 0;
+  sound.musicState = 'combat';
+
+  let waveDef = WAVE_DEFINITIONS[state.wave - 1];
+  if (!waveDef) {
+    // Endless Overtime Mode (Wave 31+)
+    const scale = Math.pow(1.22, state.wave - 30);
+    waveDef = {
+      wave: state.wave,
+      title: `ENDLESS OVERDRIVE #${state.wave - 30}`,
+      bonus: 4000 + (state.wave - 30) * 800,
+      hpScale: scale,
+      groups: [
+        { type: 'guardian', count: 4, interval: 3.0, delay: 0 },
+        { type: 'reaver', count: 8, interval: 1.5, delay: 3 },
+        { type: state.wave % 2 === 0 ? 'boss3' : 'boss2', count: 1, interval: 6.0, delay: 7 }
+      ]
+    };
+  }
+
+  if (waveDef.alert) {
+    showCommsToast(waveDef.alert, 'info');
+  }
+
+  activeSpawnEvents = [];
+  let maxSpawnTime = 12;
+  const hpMult = waveDef.hpScale || 1.0;
+
+  waveDef.groups.forEach(g => {
+    for (let c = 0; c < g.count; c++) {
+      const t = g.delay + c * g.interval;
+      if (t > maxSpawnTime) maxSpawnTime = t;
+      activeSpawnEvents.push({ time: t, type: g.type, hpMult, spawned: false });
+    }
+  });
+
+  state.waveDuration = maxSpawnTime + 14;
+  updateTopTelemetryUI();
+}
+
+function payEndOfWaveRewards() {
+  const prevDef = WAVE_DEFINITIONS[Math.min(WAVE_DEFINITIONS.length - 1, state.wave - 1)];
+  const waveBonus = prevDef ? prevDef.bonus : 1500;
+  grantCash(waveBonus);
+
+  // Quantum Farm payouts
+  let farmTotal = 0;
+  towers.forEach(t => {
+    if (t.spec.id === 'farm') {
+      const payout = t.spec.tiers[t.tier].payout || 100;
+      farmTotal += payout;
+      t.totalDamage += payout;
+      grantCash(payout);
+      spawnFCT(t.pos.clone().add(new THREE.Vector3(0, 2.2, 0)), `+$${payout}`, '#00ffaa', true);
+      emitParticles(t.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 14, 0x00ffaa, 4.0);
+    }
+  });
+
+  sound.play('cash');
+  showCommsToast(`WAVE ${state.wave} CLEARED: +$${waveBonus} Wave Bonus` + (farmTotal > 0 ? ` & +$${farmTotal} Quantum Farm Dividend!` : '!'), 'success');
+}
+
+function updateWaveDirector(dt) {
+  if (!state.waveActive || state.gameOver) return;
+
+  state.waveElapsed += dt;
+
+  // Process scheduled spawns
+  let unspawnedCount = 0;
+  for (let i = 0; i < activeSpawnEvents.length; i++) {
+    const ev = activeSpawnEvents[i];
+    if (!ev.spawned) {
+      if (state.waveElapsed >= ev.time) {
+        ev.spawned = true;
+        spawnEnemy(ev.type, 0.0, ev.hpMult);
+      } else {
+        unspawnedCount++;
+      }
+    }
+  }
+
+  const remainingTime = Math.max(0, state.waveDuration - state.waveElapsed);
+  document.getElementById('ui-wave-timer').textContent = `${remainingTime.toFixed(1)}s`;
+
+  // Check if Early Skip is available (after 45% elapsed or all enemies dead)
+  const skipBtn = document.getElementById('btn-skip-wave');
+  const skipLabel = document.getElementById('btn-skip-wave-label');
+  const canSkip = (state.waveElapsed >= state.waveDuration * 0.45) && (state.wave < state.maxWaves || state.endlessMode);
+
+  if (canSkip) {
+    const skipBonus = Math.round(remainingTime * 12);
+    skipBtn.classList.remove('hidden');
+    skipLabel.textContent = `SKIP WAVE (+$${skipBonus})`;
+    if (state.autoSkip && unspawnedCount === 0) {
+      grantCash(skipBonus);
+      startNextWave();
+      return;
+    }
+  } else {
+    skipBtn.classList.add('hidden');
+  }
+
+  // Wave cleared condition
+  if (unspawnedCount === 0 && enemies.length === 0) {
+    if (state.wave === 30 && !state.endlessMode) {
+      payEndOfWaveRewards();
+      triggerEndgameModal(true);
+      return;
+    }
+    startNextWave();
+  }
+}
+
+function grantCash(amount) {
+  state.cash += amount;
+  if (amount > 0) state.totalCashEarned += amount;
+  updateTopTelemetryUI();
+  updateTowerDockAffordability();
+  if (state.selectedTower) renderInspector(state.selectedTower);
+}
+
+function damageAegisCore(dmg) {
+  if (state.gameOver) return;
+  state.hp = Math.max(0, state.hp - dmg);
+  state.cameraTrauma = 0.8;
+  sound.play('explosion');
+  updateTopTelemetryUI();
+
+  // Shift Aegis Core Crystal color based on health
+  const ratio = state.hp / state.maxHp;
+  const col = ratio > 0.5 ? 0x00f2ff : (ratio > 0.25 ? 0xffaa00 : 0xff1e42);
+  aegisCoreCrystal.material.color.setHex(col);
+  aegisCoreCrystal.material.emissive.setHex(col);
+  aegisPointLight.color.setHex(col);
+
+  if (state.hp <= 0) {
+    triggerEndgameModal(false);
+  }
+}
+
+/* ============================================================================
+   13. TACTICAL INPUT, RAYCASTER & PLACEMENT GHOST CONTROLLER
+   ============================================================================ */
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+const keyState = {};
+
+const ghostGroup = new THREE.Group();
+const ghostMesh = new THREE.Mesh(
+  new THREE.CylinderGeometry(1.0, 1.1, 1.8, 12),
+  new THREE.MeshBasicMaterial({ color: 0x00ffaa, wireframe: true, transparent: true, opacity: 0.7 })
+);
+ghostMesh.position.y = 0.9;
+ghostGroup.add(ghostMesh);
+
+const ghostRangeRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.98, 1.0, 64),
+  new THREE.MeshBasicMaterial({ color: 0x00ffaa, side: THREE.DoubleSide, transparent: true, opacity: 0.65 })
+);
+ghostRangeRing.rotation.x = -Math.PI / 2;
+ghostRangeRing.position.y = 0.1;
+ghostGroup.add(ghostRangeRing);
+ghostGroup.visible = false;
+scene.add(ghostGroup);
+
+let lastGhostValid = false;
+let lastGhostPoint = new THREE.Vector3();
+
+function validateTowerPlacement(spec, hitPoint, surfaceType) {
+  if (towers.length >= state.maxTowerCap) return { ok: false, reason: 'MAX TOWER CAP (35)' };
+  const placedOfType = towers.filter(t => t.spec.id === spec.id).length;
+  if (placedOfType >= spec.limit) return { ok: false, reason: `LIMIT REACHED (${spec.limit}/${spec.limit})` };
+
+  if (spec.placement === 'CLIFF' && surfaceType !== 'CLIFF') {
+    return { ok: false, reason: 'REQUIRES CLIFF ELEVATION' };
+  }
+  if (spec.placement === 'GROUND' && surfaceType !== 'GROUND') {
+    return { ok: false, reason: 'REQUIRES GROUND LEVEL' };
+  }
+
+  // Canal clearance
+  if (Math.abs(hitPoint.x - 5) < 3.6) {
+    return { ok: false, reason: 'PLASMA CANAL HAZARD' };
+  }
+
+  // Road clearance
+  const distToRoad = getClosestDistanceToRoad(hitPoint);
+  if (surfaceType === 'GROUND' && distToRoad < 1.9 + spec.radius) {
+    return { ok: false, reason: 'TOO CLOSE TO ROAD' };
+  }
+
+  // Tower-to-tower footprint overlap
+  for (let i = 0; i < towers.length; i++) {
+    const other = towers[i];
+    const d = Math.hypot(hitPoint.x - other.pos.x, hitPoint.z - other.pos.z);
+    if (d < spec.radius + other.spec.radius) {
+      return { ok: false, reason: 'OVERLAPS EXISTING TOWER' };
+    }
+  }
+
+  const baseCost = spec.tiers[0].cost;
+  if (state.cash < baseCost) {
+    return { ok: false, reason: `NEED $${baseCost}` };
+  }
+
+  return { ok: true, reason: `DEPLOY ${spec.name.toUpperCase()} ($${baseCost})` };
+}
+
+window.addEventListener('pointermove', e => {
+  mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+  const badge = document.getElementById('cursor-badge');
+  if (!state.placingTowerSpec) {
+    ghostGroup.visible = false;
+    badge.classList.add('hidden');
+    return;
+  }
+
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hits = raycaster.intersectObjects(raycastTargets, false);
+  if (hits.length === 0) {
+    ghostGroup.visible = false;
+    badge.classList.add('hidden');
+    return;
+  }
+
+  const hit = hits[0];
+  const surf = hit.object.userData.surfaceType;
+  const spec = state.placingTowerSpec;
+  const check = validateTowerPlacement(spec, hit.point, surf);
+
+  lastGhostValid = check.ok;
+  lastGhostPoint.copy(hit.point);
+
+  ghostGroup.visible = true;
+  ghostGroup.position.copy(hit.point);
+  const r = spec.tiers[0].range;
+  ghostRangeRing.scale.set(r, r, 1);
+
+  const colHex = check.ok ? 0x00ffaa : 0xff1e42;
+  ghostMesh.material.color.setHex(colHex);
+  ghostRangeRing.material.color.setHex(colHex);
+
+  badge.classList.remove('hidden');
+  badge.style.left = `${e.clientX}px`;
+  badge.style.top = `${e.clientY}px`;
+  badge.textContent = check.reason;
+  badge.className = `pointer-events-none fixed z-30 transform -translate-x-1/2 -translate-y-12 px-2.5 py-1 rounded text-xs font-mono-tech font-bold tracking-wider uppercase shadow-lg border ${
+    check.ok ? 'bg-emerald-950/90 text-emerald-300 border-emerald-400' : 'bg-rose-950/90 text-rose-300 border-rose-500'
+  }`;
+});
+
+let pointerDownPos = { x: 0, y: 0 };
+
+canvas.addEventListener('pointerdown', e => {
+  sound.init();
+  pointerDownPos.x = e.clientX;
+  pointerDownPos.y = e.clientY;
+});
+
+canvas.addEventListener('pointerup', e => {
+  const dragDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+  // Если игрок тянул мышь для вращения камеры вокруг персонажа — не ставим башню и не сбрасываем выделение
+  if (dragDist > 6) return;
+
+  if (e.button === 2) {
+    selectTowerForPlacement(null);
+    selectPlacedTower(null);
+    return;
+  }
+  if (e.button !== 0) return;
+
+  if (state.placingTowerSpec) {
+    if (lastGhostValid) {
+      placeNewTower(state.placingTowerSpec, lastGhostPoint);
+      if (!e.shiftKey) selectTowerForPlacement(null);
+    } else {
+      sound.play('error');
+    }
+    return;
+  }
+
+  // Raycast to select an existing placed tower
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hitboxes = towers.map(t => t.hitbox);
+  const hits = raycaster.intersectObjects(hitboxes, false);
+  if (hits.length > 0) {
+    const picked = hits[0].object.userData.towerRef;
+    selectPlacedTower(picked);
+  } else {
+    selectPlacedTower(null);
+  }
+});
+
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+function placeNewTower(spec, pos) {
+  const cost = spec.tiers[0].cost;
+  grantCash(-cost);
+  sound.play('place');
+
+  const visualRoot = new THREE.Group();
+  visualRoot.position.copy(pos);
+  scene.add(visualRoot);
+
+  // Invisible selection hitbox
+  const hitbox = new THREE.Mesh(
+    new THREE.CylinderGeometry(spec.radius, spec.radius, 2.4, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  hitbox.position.copy(pos).add(new THREE.Vector3(0, 1.2, 0));
+  scene.add(hitbox);
+
+  // Stun indicator ring above tower
+  const stunRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.65, 0.07, 6, 12),
+    new THREE.MeshBasicMaterial({ color: 0xfacc15, wireframe: true })
+  );
+  stunRing.rotation.x = Math.PI / 2;
+  stunRing.position.copy(pos).add(new THREE.Vector3(0, 2.35, 0));
+  stunRing.visible = false;
+  scene.add(stunRing);
+
+  // Continuous beam mesh for Accelerator
+  const beamMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11, 0.14, 1.0, 8),
+    new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0.9 })
+  );
+  beamMesh.visible = false;
+  scene.add(beamMesh);
+
+  const tower = {
+    spec,
+    tier: 0,
+    pos: pos.clone(),
+    invested: cost,
+    totalDamage: 0,
+    targetMode: 'First',
+    cooldown: 0.2,
+    stunTimer: 0,
+    activeSkillTimer: 0,
+    activeSkillCooldown: 0,
+    djTrack: 'purple',
+    beamState: 'idle',
+    beamStateTimer: 0,
+    visualRoot,
+    hitbox,
+    stunRing,
+    beamMesh,
+    buffRate: 0,
+    buffRange: 0,
+    buffDmg: 0,
+    buffDiscount: 0
+  };
+  hitbox.userData.towerRef = tower;
+
+  rebuildTowerVisuals(tower);
+  towers.push(tower);
+  emitParticles(pos.clone().add(new THREE.Vector3(0, 0.8, 0)), 16, 0x00f2ff, 4.0);
+  recalculateAllTowerAuras();
+  updateTopTelemetryUI();
+  updateTowerDockAffordability();
+  selectPlacedTower(tower);
+}
+
+/* ============================================================================
+   14. HUD, INSPECTOR, TACTICAL CODEX & ANALYTICS UI
+   ============================================================================ */
+function initTowerDockUI() {
+  const dock = document.getElementById('ui-tower-dock');
+  dock.innerHTML = '';
+
+  TOWER_SPECS.forEach(spec => {
+    const card = document.createElement('button');
+    card.id = `dock-card-${spec.id}`;
+    card.className = 'tower-card relative w-20 sm:w-24 p-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex flex-col items-center gap-1 text-left';
+
+    const typeBadgeCol = spec.placement === 'CLIFF' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
+    card.innerHTML = `
+      <div class="w-full flex items-center justify-between text-[10px] font-mono-tech">
+        <span class="px-1 rounded bg-slate-800 text-slate-300 border border-slate-600">[${spec.key}]</span>
+        <span class="px-1 rounded border text-[9px] ${typeBadgeCol}">${spec.placement}</span>
+      </div>
+      <svg viewBox="0 0 24 24" class="w-7 h-7 my-0.5">${spec.iconSvg}</svg>
+      <div class="font-display font-bold text-xs text-white truncate w-full text-center">${spec.name}</div>
+      <div class="w-full flex items-center justify-between text-[10px] font-mono-tech">
+        <span id="dock-cost-${spec.id}" class="font-bold text-emerald-400">$${spec.tiers[0].cost}</span>
+        <span id="dock-cap-${spec.id}" class="text-slate-400">0/${spec.limit}</span>
+      </div>
+    `;
+
+    card.addEventListener('click', () => {
+      if (state.placingTowerSpec === spec) {
+        selectTowerForPlacement(null);
+      } else {
+        selectTowerForPlacement(spec);
+      }
+    });
+
+    card.addEventListener('pointerenter', () => showDockTooltip(spec));
+    card.addEventListener('pointerleave', () => document.getElementById('ui-dock-tooltip').classList.add('hidden'));
+    dock.appendChild(card);
+  });
+}
+
+function showDockTooltip(spec) {
+  const tt = document.getElementById('ui-dock-tooltip');
+  tt.classList.remove('hidden');
+  document.getElementById('tt-name').textContent = `${spec.name} [${spec.key}]`;
+  document.getElementById('tt-type').textContent = `${spec.placement} UNIT`;
+  document.getElementById('tt-type').className = `font-mono-tech text-[10px] px-1.5 py-0.5 rounded ${
+    spec.placement === 'CLIFF' ? 'bg-amber-500/20 text-amber-300' : 'bg-cyan-500/20 text-cyan-300'
+  }`;
+  document.getElementById('tt-desc').textContent = spec.role;
+  const t0 = spec.tiers[0];
+  document.getElementById('tt-stats').innerHTML = `
+    <span>COST: $${t0.cost}</span>
+    <span>RANGE: ${t0.range}</span>
+    <span>LIMIT: ${spec.limit}</span>
+  `;
+}
+
+function selectTowerForPlacement(spec) {
+  state.placingTowerSpec = spec;
+  if (spec) selectPlacedTower(null);
+
+  TOWER_SPECS.forEach(s => {
+    const el = document.getElementById(`dock-card-${s.id}`);
+    if (el) el.classList.toggle('selected', s === spec);
+  });
+
+  // Highlight Cliff Mesas if placing a Cliff tower
+  const showCliffBeacons = spec && spec.placement === 'CLIFF';
+  cliffBeaconMeshes.forEach(b => {
+    b.material.opacity = showCliffBeacons ? 0.55 : 0.0;
+  });
+
+  if (!spec) {
+    ghostGroup.visible = false;
+    document.getElementById('cursor-badge').classList.add('hidden');
+  }
+}
+
+function updateTowerDockAffordability() {
+  TOWER_SPECS.forEach(spec => {
+    const costEl = document.getElementById(`dock-cost-${spec.id}`);
+    const capEl = document.getElementById(`dock-cap-${spec.id}`);
+    if (!costEl || !capEl) return;
+    const count = towers.filter(t => t.spec.id === spec.id).length;
+    capEl.textContent = `${count}/${spec.limit}`;
+    const canAfford = state.cash >= spec.tiers[0].cost && count < spec.limit;
+    costEl.className = `font-bold ${canAfford ? 'text-emerald-400' : 'text-rose-400'}`;
+  });
+}
+
+function selectPlacedTower(tower) {
+  state.selectedTower = tower;
+  const insp = document.getElementById('ui-inspector');
+  while (auraTetherGroup.children.length > 0) auraTetherGroup.remove(auraTetherGroup.children[0]);
+
+  if (!tower) {
+    insp.classList.add('hidden');
+    rangeRingMesh.visible = false;
+    return;
+  }
+
+  insp.classList.remove('hidden');
+  renderInspector(tower);
+}
+
+function renderInspector(tower) {
+  const { dmg, cd, range, tData } = getEffectiveTowerStats(tower);
+
+  // Update 3D Range Ring & Support Tethers
+  rangeRingMesh.visible = true;
+  rangeRingMesh.position.set(tower.pos.x, tower.pos.y + 0.12, tower.pos.z);
+  rangeRingMesh.scale.set(range, range, 1);
+
+  while (auraTetherGroup.children.length > 0) auraTetherGroup.remove(auraTetherGroup.children[0]);
+  if (tower.spec.id === 'commander' || tower.spec.id === 'dj') {
+    towers.forEach(other => {
+      if (other !== tower && tower.pos.distanceTo(other.pos) <= range) {
+        const pts = [tower.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), other.pos.clone().add(new THREE.Vector3(0, 1.2, 0))];
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+        const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x00ffaa }));
+        auraTetherGroup.add(line);
+      }
+    });
+  }
+
+  document.getElementById('insp-name').textContent = tower.spec.name;
+  document.getElementById('insp-stars').textContent = '★'.repeat(tower.tier) + '☆'.repeat(4 - tower.tier);
+  document.getElementById('insp-tier-title').textContent = `Tier ${tower.tier}: ${tData.title}`;
+
+  // Active Buff Pills
+  const buffsEl = document.getElementById('insp-buffs');
+  buffsEl.innerHTML = '';
+  if (tower.buffRate > 0) buffsEl.innerHTML += `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono-tech bg-amber-500/20 text-amber-300 border border-amber-400/40">+${Math.round(tower.buffRate * 100)}% FIRERATE</span>`;
+  if (tower.buffRange > 0) buffsEl.innerHTML += `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono-tech bg-purple-500/20 text-purple-300 border border-purple-400/40">+${Math.round(tower.buffRange * 100)}% RANGE</span>`;
+  if (tower.buffDiscount > 0) buffsEl.innerHTML += `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono-tech bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">-${Math.round(tower.buffDiscount * 100)}% COST</span>`;
+
+  // Telemetry
+  document.getElementById('insp-telemetry-label').textContent = tower.spec.id === 'farm' ? 'Credits Generated' : 'Total Damage';
+  document.getElementById('insp-total-dmg').textContent = tower.spec.id === 'farm' ? `$${tower.totalDamage.toLocaleString()}` : tower.totalDamage.toLocaleString();
+  const dps = cd > 0 ? (dmg / cd).toFixed(1) : '0.0';
+  document.getElementById('insp-dps').textContent = tower.spec.id === 'farm' ? `+$${tData.payout}/wave` : `${dps} /s`;
+
+  // Stats Grid
+  document.getElementById('insp-stats-grid').innerHTML = `
+    <div class="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+      <div class="text-[9px] text-slate-400 uppercase">Damage</div>
+      <div class="font-mono-tech font-bold text-xs text-cyan-300">${Math.round(dmg)}</div>
+    </div>
+    <div class="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+      <div class="text-[9px] text-slate-400 uppercase">Cooldown</div>
+      <div class="font-mono-tech font-bold text-xs text-amber-300">${cd.toFixed(2)}s</div>
+    </div>
+    <div class="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+      <div class="text-[9px] text-slate-400 uppercase">Range</div>
+      <div class="font-mono-tech font-bold text-xs text-emerald-300">${range.toFixed(1)}</div>
+    </div>
+  `;
+
+  // Traits
+  const traitsEl = document.getElementById('insp-traits');
+  traitsEl.innerHTML = '';
+  if (tData.hidden) traitsEl.innerHTML += `<span class="px-2 py-0.5 rounded text-[10px] font-mono-tech bg-violet-500/20 text-violet-300 border border-violet-400/40">👁 HIDDEN DETECT</span>`;
+  if (tData.lead) traitsEl.innerHTML += `<span class="px-2 py-0.5 rounded text-[10px] font-mono-tech bg-amber-500/20 text-amber-300 border border-amber-400/40">🛡 LEAD PENETRATION</span>`;
+
+  // Targeting Priority Buttons
+  const targetButtons = document.getElementById('insp-target-buttons');
+  targetButtons.innerHTML = '';
+  TARGET_MODES.forEach(m => {
+    const b = document.createElement('button');
+    const active = tower.targetMode === m;
+    b.className = `tactical-btn py-1 rounded text-[10px] font-mono-tech border ${
+      active ? 'bg-cyan-500/30 text-cyan-200 border-cyan-400 font-bold' : 'bg-slate-900 text-slate-400 border-slate-800'
+    }`;
+    b.textContent = m.slice(0, 5);
+    b.onclick = () => {
+      tower.targetMode = m;
+      renderInspector(tower);
+    };
+    targetButtons.appendChild(b);
+  });
+
+  // Special Commander / DJ Controls
+  const specWrap = document.getElementById('insp-special-wrap');
+  specWrap.innerHTML = '';
+  if (tower.spec.id === 'commander' && tower.tier >= 2) {
+    specWrap.classList.remove('hidden');
+    specWrap.classList.add('flex');
+    const btn = document.createElement('button');
+    const ready = tower.activeSkillCooldown <= 0;
+    btn.className = `tactical-btn w-full py-2 rounded-lg font-display font-bold text-xs uppercase border ${
+      ready ? 'bg-amber-500/25 text-amber-300 border-amber-400' : 'bg-slate-800 text-slate-500 border-slate-700'
+    }`;
+    btn.textContent = ready
+      ? `[F] CALL TO ARMS (+${Math.round(tData.activeRate * 100)}% FIRERATE)`
+      : `COOLDOWN (${tower.activeSkillCooldown.toFixed(1)}s)`;
+    btn.onclick = () => triggerCallToArms(tower);
+    specWrap.appendChild(btn);
+  } else if (tower.spec.id === 'dj' && tower.tier >= 2) {
+    specWrap.classList.remove('hidden');
+    specWrap.classList.add('flex');
+    const tracks = [
+      { id: 'purple', label: 'PURPLE (+RANGE)', col: 'text-purple-300 border-purple-400' },
+      { id: 'green', label: 'GREEN (-COST)', col: 'text-emerald-300 border-emerald-400' },
+      { id: 'red', label: 'RED (+DAMAGE)', col: 'text-rose-300 border-rose-400' }
+    ];
+    const row = document.createElement('div');
+    row.className = 'grid grid-cols-3 gap-1';
+    tracks.forEach(tr => {
+      const tb = document.createElement('button');
+      tb.className = `tactical-btn py-1 rounded text-[9px] font-mono-tech border ${
+        tower.djTrack === tr.id ? `bg-slate-800 font-bold ${tr.col}` : 'bg-slate-950 text-slate-500 border-slate-800'
+      }`;
+      tb.textContent = tr.label;
+      tb.onclick = () => {
+        tower.djTrack = tr.id;
+        recalculateAllTowerAuras();
+      };
+      row.appendChild(tb);
+    });
+    specWrap.appendChild(row);
+  } else {
+    specWrap.classList.add('hidden');
+  }
+
+  // Next Tier Upgrade Card
+  const upCard = document.getElementById('insp-upgrade-card');
+  if (tower.tier < 4) {
+    upCard.classList.remove('hidden');
+    const nextT = tower.spec.tiers[tower.tier + 1];
+    const discCost = Math.round(nextT.cost * (1 - tower.buffDiscount));
+    document.getElementById('insp-next-title').textContent = `T${tower.tier + 1}: ${nextT.title}`;
+    document.getElementById('insp-next-cost').textContent = `$${discCost}`;
+
+    let deltas = '';
+    if (nextT.dmg !== tData.dmg) deltas += `<div>DMG: ${tData.dmg} → <span class="text-emerald-400 font-bold">${nextT.dmg}</span></div>`;
+    if (nextT.range !== tData.range) deltas += `<div>RANGE: ${tData.range} → <span class="text-emerald-400 font-bold">${nextT.range}</span></div>`;
+    if (nextT.payout) deltas += `<div>PAYOUT: $${tData.payout} → <span class="text-emerald-400 font-bold">$${nextT.payout}/wave</span></div>`;
+    if (nextT.unitName) deltas += `<div>SPAWNS: <span class="text-cyan-300 font-bold">${nextT.unitName} (${nextT.unitHp} HP)</span></div>`;
+    if (nextT.hidden && !tData.hidden) deltas += `<div class="text-violet-300 font-bold">+ UNLOCKS HIDDEN DETECTION</div>`;
+    if (nextT.lead && !tData.lead) deltas += `<div class="text-amber-300 font-bold">+ UNLOCKS LEAD PENETRATION</div>`;
+    document.getElementById('insp-next-deltas').innerHTML = deltas;
+
+    const upBtn = document.getElementById('btn-upgrade-tower');
+    upBtn.disabled = state.cash < discCost;
+    upBtn.className = `tactical-btn w-full py-2 rounded-lg font-display font-bold text-sm tracking-wider uppercase border ${
+      state.cash >= discCost
+        ? 'bg-gradient-to-r from-cyan-500/30 to-emerald-500/30 text-emerald-300 border-emerald-400/60'
+        : 'bg-slate-800/80 text-slate-500 border-slate-700 cursor-not-allowed'
+    }`;
+  } else {
+    upCard.classList.add('hidden');
+  }
+
+  // Sell Refund (70%)
+  const refund = Math.round(tower.invested * 0.70);
+  document.getElementById('btn-sell-tower').textContent = `[X] SELL TOWER (+$${refund})`;
+}
+
+function upgradeSelectedTower() {
+  const t = state.selectedTower;
+  if (!t || t.tier >= 4) return;
+  const nextT = t.spec.tiers[t.tier + 1];
+  const cost = Math.round(nextT.cost * (1 - t.buffDiscount));
+  if (state.cash < cost) {
+    sound.play('error');
+    return;
+  }
+  grantCash(-cost);
+  t.tier++;
+  t.invested += cost;
+  sound.play('upgrade');
+  rebuildTowerVisuals(t);
+  emitParticles(t.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 24, 0xffbe0b, 5.0);
+  recalculateAllTowerAuras();
+  renderInspector(t);
+}
+
+function sellSelectedTower() {
+  const t = state.selectedTower;
+  if (!t) return;
+  const refund = Math.round(t.invested * 0.70);
+  grantCash(refund);
+  sound.play('cash');
+  spawnFCT(t.pos.clone().add(new THREE.Vector3(0, 1.8, 0)), `+$${refund}`, '#00ffaa', true);
+
+  scene.remove(t.visualRoot);
+  scene.remove(t.hitbox);
+  scene.remove(t.stunRing);
+  scene.remove(t.beamMesh);
+
+  const idx = towers.indexOf(t);
+  if (idx !== -1) towers.splice(idx, 1);
+  selectPlacedTower(null);
+  recalculateAllTowerAuras();
+  updateTopTelemetryUI();
+  updateTowerDockAffordability();
+}
+
+function triggerCallToArms(cmdTower) {
+  if (!cmdTower) {
+    cmdTower = towers.find(t => t.spec.id === 'commander' && t.tier >= 2 && t.activeSkillCooldown <= 0);
+  }
+  if (!cmdTower || cmdTower.tier < 2 || cmdTower.activeSkillCooldown > 0) {
+    sound.play('error');
+    return;
+  }
+
+  sound.play('callToArms');
+  cmdTower.activeSkillTimer = 10.0;
+  cmdTower.activeSkillCooldown = 30.0;
+  spawnShockwaveRing(cmdTower.pos, cmdTower.spec.tiers[cmdTower.tier].range, 0xfacc15);
+  spawnFCT(cmdTower.pos.clone().add(new THREE.Vector3(0, 2.6, 0)), 'CALL TO ARMS!', '#facc15', true);
+
+  // Tier 4 Supreme Fleet Marshal Orbital Kinetic Strikes
+  if (cmdTower.spec.tiers[cmdTower.tier].orbitalStrike) {
+    const targets = [...enemies].filter(e => !e.dead).sort((a, b) => b.hp - a.hp).slice(0, 3);
+    targets.forEach(tgt => {
+      spawnBeamTrail(tgt.pos.clone().add(new THREE.Vector3(0, 35, 0)), tgt.pos, 0x00f2ff, 0.6);
+      spawnShockwaveRing(tgt.pos, 5.0, 0x00f2ff);
+      damageEnemy(tgt, 400, cmdTower, true, true);
+    });
+  }
+
+  recalculateAllTowerAuras();
+}
+
+function updateGlobalCallToArmsButton() {
+  const btn = document.getElementById('btn-call-arms-global');
+  const readyCmd = towers.find(t => t.spec.id === 'commander' && t.tier >= 2 && t.activeSkillCooldown <= 0);
+  btn.classList.toggle('hidden', !readyCmd);
+}
+
+function updateTopTelemetryUI() {
+  document.getElementById('ui-hp-text').textContent = `${state.hp} / ${state.maxHp}`;
+  document.getElementById('ui-hp-bar').style.width = `${Math.max(0, (state.hp / state.maxHp) * 100)}%`;
+  document.getElementById('ui-cash').textContent = `$${state.cash.toLocaleString()}`;
+  document.getElementById('ui-tower-count').textContent = `${towers.length} / ${state.maxTowerCap}`;
+  document.getElementById('ui-wave-number').textContent = `WAVE ${state.wave} / ${state.maxWaves}`;
+
+  const wDef = WAVE_DEFINITIONS[state.wave - 1];
+  document.getElementById('ui-wave-title').textContent = wDef ? wDef.title : (state.wave > 30 ? 'ENDLESS OVERDRIVE' : 'AWAITING DEPLOYMENT');
+}
+
+function updateBossHud(boss) {
+  const wrap = document.getElementById('ui-boss-container');
+  if (!boss) {
+    wrap.classList.add('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden');
+  document.getElementById('ui-boss-name').textContent = `⚠ ${boss.spec.name}`;
+  document.getElementById('ui-boss-hp-text').textContent = `${boss.hp.toLocaleString()} / ${boss.maxHp.toLocaleString()}`;
+  document.getElementById('ui-boss-hp-bar').style.width = `${Math.max(0, (boss.hp / boss.maxHp) * 100)}%`;
+
+  const shWrap = document.getElementById('ui-boss-shield-wrap');
+  if (boss.maxShield > 0 && boss.shield > 0) {
+    shWrap.classList.remove('hidden');
+    document.getElementById('ui-boss-shield-bar').style.width = `${(boss.shield / boss.maxShield) * 100}%`;
+  } else {
+    shWrap.classList.add('hidden');
+  }
+  document.getElementById('ui-boss-skill-text').textContent = boss.lastSkillText || 'STATUS: ADVANCING TOWARD AEGIS CORE';
+}
+
+function showCommsToast(msg, level = 'info') {
+  const stack = document.getElementById('ui-toast-stack');
+  const toast = document.createElement('div');
+  const colClass = level === 'danger'
+    ? 'border-l-rose-500 text-rose-200'
+    : (level === 'success' ? 'border-l-emerald-400 text-emerald-200' : 'border-l-cyan-400 text-cyan-100');
+  toast.className = `glass-panel rounded-xl p-3 text-xs font-mono-tech border-l-4 ${colClass} transition-opacity duration-300`;
+  toast.textContent = msg;
+  stack.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 350);
+  }, 5500);
+}
+
+function populateCodex(tab = 'towers') {
+  const container = document.getElementById('codex-content');
+  container.innerHTML = '';
+  if (tab === 'towers') {
+    TOWER_SPECS.forEach(s => {
+      const t0 = s.tiers[0];
+      const t4 = s.tiers[4];
+      container.innerHTML += `
+        <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700/80 flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <span class="font-display font-bold text-base text-cyan-300 uppercase">${s.name} [${s.key}]</span>
+            <span class="text-[10px] font-mono-tech px-2 py-0.5 rounded bg-slate-800 text-amber-300">${s.placement} | CAP: ${s.limit}</span>
+          </div>
+          <p class="text-xs text-slate-300">${s.role}</p>
+          <div class="text-[11px] font-mono-tech text-emerald-300">T0 (${t0.title}): $${t0.cost} | DMG ${t0.dmg} | RNG ${t0.range}</div>
+          <div class="text-[11px] font-mono-tech text-amber-300">T4 (${t4.title}): $${t4.cost} | DMG ${t4.dmg} | RNG ${t4.range}</div>
+        </div>
+      `;
+    });
+  } else {
+    Object.values(ENEMY_SPECS).forEach(e => {
+      container.innerHTML += `
+        <div class="bg-slate-900/90 p-3.5 rounded-xl border ${e.isBoss ? 'border-rose-500/60' : 'border-slate-700/80'} flex flex-col gap-1">
+          <div class="flex items-center justify-between">
+            <span class="font-display font-bold text-base ${e.isBoss ? 'text-rose-400' : 'text-white'} uppercase">${e.name}</span>
+            <span class="text-xs font-mono-tech text-emerald-400">HP: ${e.hp.toLocaleString()} | SPD: ${e.speed}</span>
+          </div>
+          <p class="text-xs text-slate-300">${e.desc}</p>
+        </div>
+      `;
+    });
+  }
+}
+
+function triggerEndgameModal(victory) {
+  state.gameOver = true;
+  const modal = document.getElementById('modal-endgame');
+  modal.classList.remove('hidden');
+
+  document.getElementById('endgame-badge').textContent = victory ? 'CAMPAIGN COMPLETE' : 'AEGIS CORE BREACHED';
+  document.getElementById('endgame-title').textContent = victory ? 'VICTORY ACHIEVED' : 'MISSION DEFEAT';
+  document.getElementById('end-stat-dmg').textContent = state.totalDamageDealt.toLocaleString();
+  document.getElementById('end-stat-kills').textContent = state.totalKills.toLocaleString();
+  document.getElementById('end-stat-cash').textContent = `$${state.totalCashEarned.toLocaleString()}`;
+
+  const mvp = [...towers].sort((a, b) => b.totalDamage - a.totalDamage)[0];
+  document.getElementById('end-stat-mvp').textContent = mvp ? `${mvp.spec.name} (${mvp.totalDamage.toLocaleString()})` : 'None';
+  document.getElementById('btn-endless-continue').classList.toggle('hidden', !victory);
+}
+
+document.getElementById('btn-skip-wave').onclick = () => {
+  sound.init();
+  startNextWave();
+};
+document.getElementById('btn-upgrade-tower').onclick = () => upgradeSelectedTower();
+document.getElementById('btn-sell-tower').onclick = () => sellSelectedTower();
+document.getElementById('btn-insp-close').onclick = () => selectPlacedTower(null);
+document.getElementById('btn-call-arms-global').onclick = () => triggerCallToArms(null);
+document.getElementById('btn-cam-mode').onclick = () => toggleCameraMode();
+document.getElementById('btn-cam-pov').onclick = () => {
+  if (player.mode !== 'roblox') toggleCameraMode();
+  setPlayerCameraPOV(player.povPreset + 1);
+};
+
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.onclick = () => {
+    state.timeScale = parseFloat(btn.dataset.speed);
+    document.querySelectorAll('.speed-btn').forEach(b => {
+      b.className = b === btn
+        ? 'speed-btn tactical-btn px-2.5 py-1 rounded text-xs font-mono-tech font-bold bg-cyan-500/30 text-cyan-300 border border-cyan-400'
+        : 'speed-btn tactical-btn px-2 py-1 rounded text-xs font-mono-tech font-bold bg-slate-800/80 text-slate-300 border border-slate-700';
+    });
+  };
+});
+
+document.getElementById('btn-autoskip').onclick = e => {
+  state.autoSkip = !state.autoSkip;
+  e.target.textContent = `AUTO-SKIP: ${state.autoSkip ? 'ON' : 'OFF'}`;
+  e.target.classList.toggle('text-emerald-300', state.autoSkip);
+};
+
+document.getElementById('btn-bloom').onclick = e => {
+  state.bloomEnabled = !state.bloomEnabled;
+  e.target.textContent = `BLOOM: ${state.bloomEnabled ? 'ON' : 'OFF'}`;
+};
+
+document.getElementById('btn-audio').onclick = e => {
+  sound.init();
+  sound.setMuted(state.audioEnabled);
+  e.target.textContent = state.audioEnabled ? '🔊 SFX+BGM' : '🔇 MUTED';
+};
+
+// Sandbox & Codex Modal Bindings
+document.getElementById('btn-sandbox').onclick = () => document.getElementById('modal-sandbox').classList.remove('hidden');
+document.getElementById('btn-close-sandbox').onclick = () => document.getElementById('modal-sandbox').classList.add('hidden');
+document.getElementById('sb-add-cash').onclick = () => grantCash(999999);
+document.getElementById('sb-heal-base').onclick = () => { state.hp = state.maxHp; updateTopTelemetryUI(); };
+document.getElementById('sb-clear-enemies').onclick = () => {
+  enemies.forEach(e => scene.remove(e.rig.root));
+  enemies.length = 0;
+};
+document.getElementById('sb-max-all-towers').onclick = () => {
+  towers.forEach(t => { t.tier = 4; rebuildTowerVisuals(t); });
+  recalculateAllTowerAuras();
+};
+document.getElementById('sb-jump-wave').onclick = () => {
+  const w = Math.max(1, Math.min(30, parseInt(document.getElementById('sb-wave-input').value) || 1));
+  state.wave = w - 1;
+  startNextWave();
+  document.getElementById('modal-sandbox').classList.add('hidden');
+};
+document.querySelectorAll('.sb-spawn-btn').forEach(btn => {
+  btn.onclick = () => spawnEnemy(btn.dataset.spawn, 0.02);
+});
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.onclick = () => {
+    state.difficulty = btn.dataset.diff;
+    const d = DIFFICULTY_PRESETS[state.difficulty];
+    state.maxHp = d.startHp;
+    state.hp = d.startHp;
+    document.getElementById('ui-difficulty-badge').textContent = d.name;
+    updateTopTelemetryUI();
+  };
+});
+
+document.getElementById('btn-codex').onclick = () => {
+  populateCodex('towers');
+  document.getElementById('modal-codex').classList.remove('hidden');
+};
+document.getElementById('btn-close-codex').onclick = () => document.getElementById('modal-codex').classList.add('hidden');
+document.getElementById('tab-codex-towers').onclick = () => populateCodex('towers');
+document.getElementById('tab-codex-enemies').onclick = () => populateCodex('enemies');
+
+document.getElementById('btn-endless-continue').onclick = () => {
+  state.gameOver = false;
+  state.endlessMode = true;
+  document.getElementById('modal-endgame').classList.add('hidden');
+  startNextWave();
+};
+document.getElementById('btn-restart-game').onclick = () => window.location.reload();
+
+// Keyboard Shortcuts
+window.addEventListener('keydown', e => {
+  keyState[e.code] = true;
+  if (e.target.tagName === 'INPUT') return;
+
+  const towerByKey = TOWER_SPECS.find(s => s.key === e.key);
+  if (towerByKey) {
+    selectTowerForPlacement(state.placingTowerSpec === towerByKey ? null : towerByKey);
+  } else if (e.code === 'Escape') {
+    selectTowerForPlacement(null);
+    selectPlacedTower(null);
+  } else if (e.code === 'KeyU' || e.code === 'KeyE') {
+    upgradeSelectedTower();
+  } else if (e.code === 'KeyX' || e.code === 'Backspace') {
+    sellSelectedTower();
+  } else if (e.code === 'KeyT' && state.selectedTower) {
+    const idx = (TARGET_MODES.indexOf(state.selectedTower.targetMode) + 1) % TARGET_MODES.length;
+    state.selectedTower.targetMode = TARGET_MODES[idx];
+    renderInspector(state.selectedTower);
+  } else if (e.code === 'KeyF') {
+    triggerCallToArms(state.selectedTower?.spec.id === 'commander' ? state.selectedTower : null);
+  } else if (e.code === 'Space') {
+    e.preventDefault();
+    if (player.mode === 'roblox') {
+      triggerPlayerJump();
+    } else if (!document.getElementById('btn-skip-wave').classList.contains('hidden')) {
+      startNextWave();
+    }
+  } else if (e.code === 'KeyG') {
+    if (!document.getElementById('btn-skip-wave').classList.contains('hidden')) startNextWave();
+  } else if (e.code === 'KeyV') {
+    toggleCameraMode();
+  } else if (e.code === 'KeyC') {
+    if (player.mode !== 'roblox') toggleCameraMode();
+    setPlayerCameraPOV(player.povPreset + 1);
+  } else if (e.code === 'KeyR') {
+    if (player.mode === 'roblox') {
+      player.pos.set(0, 0, 2);
+      player.vel.set(0, 0, 0);
+      setPlayerCameraPOV(0);
+    } else {
+      camera.position.set(0, 48, 52);
+      controls.target.set(0, 0, 0);
+    }
+  }
+});
+
+window.addEventListener('keyup', e => { keyState[e.code] = false; });
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ============================================================================
+   15. MAIN BOOTSTRAP & FIXED-TIMESTEP GAME LOOP
+   ============================================================================ */
+initTowerDockUI();
+updateTopTelemetryUI();
+updateTowerDockAffordability();
+showCommsToast('РЕЖИМ ROBLOX 3D: Передвигайтесь на WASD, прыгайте на ПРОБЕЛ, зажимайте ПКМ (правую кнопку мыши) для поворота камеры и ЛКМ для установки башен!', 'info');
+
+const clock = new THREE.Clock();
+
+function animateLoop() {
+  requestAnimationFrame(animateLoop);
+
+  const rawDt = Math.min(clock.getDelta(), 0.1);
+  const simDt = rawDt * state.timeScale;
+  shaderUniforms.uTime.value += rawDt;
+
+  // Обновление 3D Roblox-аватара игрока и следящей камеры
+  updatePlayerAvatar(rawDt);
+
+  // Camera Shake Trauma decay
+  if (state.cameraTrauma > 0) {
+    const shake = state.cameraTrauma * state.cameraTrauma * 0.45;
+    camera.position.x += (Math.random() - 0.5) * shake;
+    camera.position.y += (Math.random() - 0.5) * shake;
+    state.cameraTrauma = Math.max(0, state.cameraTrauma - rawDt * 1.8);
+  }
+
+  controls.update();
+
+  // Rotate Aegis Core Citadel rings & Crystal
+  if (aegisCoreCrystal) {
+    aegisCoreCrystal.rotation.y += rawDt * 1.4;
+    aegisCoreCrystal.position.y = 3.4 + Math.sin(shaderUniforms.uTime.value * 2.5) * 0.18;
+    aegisCoreRings[0].rotation.x += rawDt * 1.8;
+    aegisCoreRings[0].rotation.y += rawDt * 1.2;
+    aegisCoreRings[1].rotation.z -= rawDt * 1.6;
+    aegisCoreRings[1].rotation.x -= rawDt * 1.1;
+  }
+
+  // Simulation Updates (scaled by timeScale)
+  if (simDt > 0) {
+    updateWaveDirector(simDt);
+    updateTowers(simDt);
+    updateEnemies(simDt);
+    updateProjectilesAndVehicles(simDt);
+    updateParticles(simDt);
+  }
+
+  sound.updateMusic();
+  render2DOverlay(rawDt);
+
+  if (state.bloomEnabled) {
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
+}
+
+window.onload = function () {
+  animateLoop();
+};
+</script>
+</body>
+</html>
